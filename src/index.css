@@ -1,0 +1,139 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  font-family: 'Inter', system-ui, sans-serif;
+  user-select: none;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.15);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.25);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.no-select {
+  user-select: none;
+}
+
+.glass-panel {
+  background: rgba(24, 22, 34, 0.62);
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.glass-titlebar {
+  background: rgba(255,255,255,0.03);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+/* Indeterminate page-load bar in the Browser */
+@keyframes nova-loadbar {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
+/* The shell disables selection globally; text surfaces opt back in. */
+input, textarea {
+  user-select: text;
+}
+
+/* ---------------------------------------------------------------- theming */
+/*
+ * The accent colour and light theme are driven by two things App.tsx sets on
+ * the shell root: `--nova-accent` and `data-theme`. Rather than rewriting every
+ * app's hardcoded utility classes, the accent and light palettes override those
+ * exact utilities here, so a setting change repaints the whole OS.
+ */
+
+:root {
+  --nova-accent: #3b82f6;
+}
+
+/* accent: selection, focus rings, primary actions */
+.bg-blue-500 { background-color: var(--nova-accent); }
+.hover\:bg-blue-400:hover { background-color: color-mix(in srgb, var(--nova-accent) 82%, white); }
+.bg-blue-500\/30 { background-color: color-mix(in srgb, var(--nova-accent) 30%, transparent); }
+.bg-blue-500\/25 { background-color: color-mix(in srgb, var(--nova-accent) 25%, transparent); }
+.bg-blue-500\/20 { background-color: color-mix(in srgb, var(--nova-accent) 20%, transparent); }
+.bg-blue-500\/15 { background-color: color-mix(in srgb, var(--nova-accent) 15%, transparent); }
+.ring-blue-500\/50 { --tw-ring-color: color-mix(in srgb, var(--nova-accent) 50%, transparent); }
+.ring-blue-500\/40 { --tw-ring-color: color-mix(in srgb, var(--nova-accent) 40%, transparent); }
+.focus\:ring-blue-500\/60:focus { --tw-ring-color: color-mix(in srgb, var(--nova-accent) 60%, transparent); }
+.focus-within\:ring-blue-500\/60:focus-within { --tw-ring-color: color-mix(in srgb, var(--nova-accent) 60%, transparent); }
+.focus\:ring-blue-500\/50:focus { --tw-ring-color: color-mix(in srgb, var(--nova-accent) 50%, transparent); }
+.focus-within\:ring-blue-500\/50:focus-within { --tw-ring-color: color-mix(in srgb, var(--nova-accent) 50%, transparent); }
+.text-blue-300 { color: color-mix(in srgb, var(--nova-accent) 55%, white); }
+.accent-blue-500 { accent-color: var(--nova-accent); }
+.border-blue-500\/50 { border-color: color-mix(in srgb, var(--nova-accent) 50%, transparent); }
+.bg-blue-500\/50 { background-color: color-mix(in srgb, var(--nova-accent) 50%, transparent); }
+
+/* light theme: flip the surfaces and the white-alpha text scale */
+[data-theme="light"] .glass-panel {
+  background: rgba(250, 250, 252, 0.72);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+[data-theme="light"] .glass-titlebar {
+  background: rgba(0, 0, 0, 0.035);
+  border-bottom-color: rgba(0, 0, 0, 0.07);
+}
+
+[data-theme="light"] .bg-\[\#15141d\],
+[data-theme="light"] .bg-\[\#14131c\],
+[data-theme="light"] .bg-\[\#141420\],
+[data-theme="light"] .bg-\[\#16151f\],
+[data-theme="light"] .bg-\[\#17151f\],
+[data-theme="light"] .bg-\[\#1e1e2e\],
+[data-theme="light"] .bg-\[\#1b1a26\],
+[data-theme="light"] .bg-\[\#101019\] { background-color: #f5f5f8; }
+
+[data-theme="light"] .text-white { color: #16151d; }
+[data-theme="light"] .text-white\/85 { color: rgba(16, 15, 24, 0.88); }
+[data-theme="light"] .text-white\/80 { color: rgba(16, 15, 24, 0.85); }
+[data-theme="light"] .text-white\/75 { color: rgba(16, 15, 24, 0.8); }
+[data-theme="light"] .text-white\/70 { color: rgba(16, 15, 24, 0.75); }
+[data-theme="light"] .text-white\/60 { color: rgba(16, 15, 24, 0.66); }
+[data-theme="light"] .text-white\/50 { color: rgba(16, 15, 24, 0.58); }
+[data-theme="light"] .text-white\/45 { color: rgba(16, 15, 24, 0.54); }
+[data-theme="light"] .text-white\/40 { color: rgba(16, 15, 24, 0.5); }
+[data-theme="light"] .text-white\/35 { color: rgba(16, 15, 24, 0.46); }
+[data-theme="light"] .text-white\/30 { color: rgba(16, 15, 24, 0.42); }
+[data-theme="light"] .text-white\/25 { color: rgba(16, 15, 24, 0.38); }
+[data-theme="light"] .text-white\/20 { color: rgba(16, 15, 24, 0.3); }
+
+[data-theme="light"] .bg-white\/5 { background-color: rgba(16, 15, 24, 0.05); }
+[data-theme="light"] .bg-white\/10 { background-color: rgba(16, 15, 24, 0.08); }
+[data-theme="light"] .hover\:bg-white\/5:hover { background-color: rgba(16, 15, 24, 0.05); }
+[data-theme="light"] .hover\:bg-white\/10:hover { background-color: rgba(16, 15, 24, 0.09); }
+[data-theme="light"] .border-white\/10 { border-color: rgba(16, 15, 24, 0.1); }
+[data-theme="light"] .border-white\/5 { border-color: rgba(16, 15, 24, 0.06); }
+[data-theme="light"] .border-white\/15 { border-color: rgba(16, 15, 24, 0.15); }
+[data-theme="light"] .bg-black\/20 { background-color: rgba(16, 15, 24, 0.05); }
+[data-theme="light"] .bg-black\/30 { background-color: rgba(16, 15, 24, 0.07); }
+[data-theme="light"] .caret-white { caret-color: #16151d; }

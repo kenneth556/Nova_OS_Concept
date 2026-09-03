@@ -1,0 +1,66 @@
+BLAK code saves as:
+
+main.blk
+
+A project would look like:
+
+MyApp/
+├── app.blk
+├── assets/
+│   ├── logo.png
+│   └── music.mp3
+├── data/
+└── app.blak
+📦 Exported apps
+
+When they click Build, BLAK packages everything into:
+
+MyApp.blak
+
+That's your native BLAK app package.
+
+The OS can install/open .blak files directly.
+
+MyApp.blak
+     ↓
+BLAK OS
+     ↓
+Installed App
+🌐 Web export
+
+You could also let developers export:
+
+MyApp.html
+
+or a complete:
+
+MyApp-Web/
+├── index.html
+├── assets/
+└── runtime/
+💻 Developer project
+
+And eventually:
+
+.blk      → BLAK source code
+.blak     → packaged BLAK application
+
+So basically:
+
+.blk = source
+
+.blak = installable app
+
+
+
+
+
+
+
+
+
+People could write:
+
+myapp.blk
+
+in your normal Notepad, save it, then import/build it in the OS.

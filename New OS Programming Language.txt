@@ -1,0 +1,478 @@
+🧠 What is BLAK?
+
+BLAK is the native programming language for your browser-based OS.
+
+The philosophy is:
+
+If you can understand what the code says, you can probably write it.
+
+It should be easy to learn, hard to write bad code in, and designed specifically around apps, windows, files, UI, and the OS.
+
+1. 🏠 Apps
+
+Every application starts with app.
+
+app "Hello World" {
+    window {
+        text "Hello World 👋"
+    }
+}
+
+The app name is "Hello World".
+
+You can have multiple windows:
+
+app "My App" {
+    window "Main" {
+        text "Main Window"
+    }
+
+    window "Settings" {
+        text "Settings"
+    }
+}
+2. 🪟 Windows
+
+Windows are built into the language.
+
+window "Calculator" {
+    size 500, 400
+
+    text "Calculator"
+}
+
+You could eventually support:
+
+window "My App" {
+    size 800, 600
+    title "My Application"
+    resizable true
+}
+3. 🎨 UI
+
+BLAK should make UI ridiculously simple.
+
+text "Welcome!"
+
+button "Start" {
+    show "Let's go!"
+}
+
+input username
+
+image "logo.png"
+
+You shouldn't need HTML.
+
+No:
+
+<div>
+<button>
+<input>
+
+Just BLAK.
+
+4. 📦 Variables
+
+Dead simple:
+
+name = "Papa"
+age = 19
+score = 100
+online = true
+
+Types can exist internally, but beginners don't need to worry about them.
+
+You can use variables:
+
+name = "Papa"
+
+show "Hello " + name
+5. 🔢 Calculations
+price = 500
+quantity = 3
+
+total = price * quantity
+
+show total
+
+Support the obvious operators:
+
++   addition
+-   subtraction
+*   multiplication
+/   division
+%   remainder
+
+And comparisons:
+
+==  equal
+!=  not equal
+>   greater
+<   less
+>=  greater/equal
+<=  less/equal
+6. 🤔 Conditions
+age = 19
+
+if age >= 18 {
+    show "Adult"
+}
+
+With alternatives:
+
+if score >= 70 {
+    show "Excellent"
+}
+else if score >= 50 {
+    show "Passed"
+}
+else {
+    show "Failed"
+}
+7. 🔁 Loops
+
+Keep these simple too.
+
+for item in items {
+    show item
+}
+
+Or:
+
+repeat 5 {
+    show "Hello"
+}
+
+That's probably enough for beginners.
+
+8. 🧩 Functions
+
+Functions don't need the ugly function keyword.
+
+sayHello(name) {
+    show "Hello " + name
+}
+
+Call it:
+
+sayHello("Papa")
+
+Returning values:
+
+add(a, b) {
+    return a + b
+}
+
+result = add(10, 20)
+
+show result
+9. 🖱️ Events
+
+This is where BLAK becomes OS-native.
+
+button "Click Me" {
+    click {
+        show "Clicked!"
+    }
+}
+
+Or we can make the shorter version:
+
+button "Click Me" {
+    show "Clicked!"
+}
+
+The block automatically means when clicked.
+
+Other events could be:
+
+on open {
+    show "App opened"
+}
+
+on close {
+    show "Goodbye"
+}
+10. 📁 Files
+
+BLAK should have native filesystem commands.
+
+save "hello.txt" {
+    content = "Hello World"
+}
+
+Read it:
+
+data = read "hello.txt"
+
+show data
+
+Create folders:
+
+folder "Documents"
+
+Eventually:
+
+files.list()
+files.exists()
+files.delete()
+files.move()
+
+But I'd keep the beginner syntax cleaner than raw API calls.
+
+11. 🔔 OS features
+
+This is one of the biggest reasons to have BLAK.
+
+notify "Download complete!"
+
+Open another app:
+
+open "Calculator"
+
+Open a website:
+
+browser "https://example.com"
+
+Clipboard:
+
+copy "Hello!"
+
+You could eventually have:
+
+theme dark
+12. 🔐 Permissions
+
+Apps shouldn't automatically get access to everything.
+
+Something like:
+
+app "Photo Editor" {
+
+    permission files
+    permission camera
+
+    window {
+        ...
+    }
+}
+
+When installed, the OS can ask:
+
+Photo Editor wants access to your files and camera.
+
+That's a pretty important part of the ecosystem.
+
+13. 📡 Networking
+
+Keep HTTP requests simple.
+
+data = get "https://api.example.com/users"
+
+show data
+
+POST:
+
+post "https://api.example.com/users" {
+    name = "Papa"
+    age = 19
+}
+
+Eventually APIs could be wrapped into nicer libraries.
+
+14. 🗃️ Data
+
+BLAK could have an extremely simple built-in data system.
+
+user = {
+    name: "Papa"
+    age: 19
+}
+
+show user.name
+
+Lists:
+
+users = [
+    "John"
+    "Sarah"
+    "Mike"
+]
+
+Then:
+
+for user in users {
+    show user
+}
+15. 🧱 Components
+
+Once people start building bigger applications, they can make reusable components.
+
+component UserCard(name, age) {
+    box {
+        text name
+        text age
+    }
+}
+
+Then:
+
+UserCard("Papa", 19)
+UserCard("John", 21)
+
+This keeps large applications manageable.
+
+16. 📦 Packages
+
+Eventually BLAK needs libraries.
+
+Something like:
+
+use charts
+use database
+use auth
+
+Then:
+
+chart sales {
+    type bar
+}
+
+The package manager could be:
+
+blak install charts
+17. 🖌️ Styling
+
+I wouldn't make people write CSS.
+
+Something like:
+
+button "Start" {
+    size 200, 50
+    text_size 20
+    rounded 10
+}
+
+And layouts:
+
+column {
+    text "Username"
+    input username
+
+    text "Password"
+    input password
+
+    button "Login"
+}
+
+Maybe:
+
+row {
+    button "Cancel"
+    button "Continue"
+}
+
+That's MUCH more beginner-friendly.
+
+18. 🧠 Advanced stuff
+
+The beautiful part is that beginners don't have to touch the complicated stuff.
+
+But advanced developers can access lower-level APIs:
+
+system.memory(...)
+system.process(...)
+system.network(...)
+
+And eventually:
+
+BLAK
+ ↓
+BLAK Compiler
+ ↓
+BLAK Runtime
+ ↓
+WASM / JavaScript
+ ↓
+Browser
+
+So beginners get the simple language, while serious developers aren't trapped by it.
+
+19. 🛠️ The developer experience
+
+The OS should have BLAK Studio built in.
+
+Someone opens it and gets:
+
+┌─────────────────────────────────────────┐
+│ BLAK Studio                             │
+├──────────┬──────────────────────────────┤
+│ Files    │ app "Hello" {                │
+│          │     window {                 │
+│ main.blk │         text "Hello!"        │
+│          │     }                        │
+│ assets/  │ }                            │
+│          │                              │
+├──────────┴──────────────────────────────┤
+│ ▶ Run     🔨 Build     📦 Package        │
+└─────────────────────────────────────────┘
+
+Hit Run.
+
+Your app opens as an actual window inside the OS.
+
+🎯 The BLAK philosophy
+
+I'd keep these as the core rules:
+
+1. No semicolons
+
+2. No unnecessary keywords
+
+3. No HTML for UI
+
+4. No CSS for basic styling
+
+5. No JavaScript knowledge required
+
+6. OS functionality is built into the language
+
+7. Beginner-friendly syntax
+
+8. Advanced functionality still available
+
+So someone can go from:
+
+app "Hello" {
+    window {
+        text "Hello World"
+    }
+}
+
+to eventually building:
+
+app "Social Network" {
+
+    permission notifications
+    permission files
+
+    window "Home" {
+
+        text "Welcome back!"
+
+        for post in posts {
+
+            card {
+                text post.author
+                text post.content
+
+                button "Like" {
+                    like post
+                }
+            }
+        }
+    }
+}
+
+without ever needing to learn HTML, CSS, or JavaScript.
