@@ -118,6 +118,12 @@ export interface Scope {
 
 export type UiNodeType =
   | "text"
+  | "heading"
+  | "subtitle"
+  | "badge"
+  | "divider"
+  | "spacer"
+  | "link"
   | "button"
   | "input"
   | "image"
@@ -126,11 +132,22 @@ export type UiNodeType =
   | "column"
   | "row";
 
+export type UiAlign = "left" | "center" | "right";
+export type UiVariant = "primary" | "secondary" | "ghost" | "danger";
+
 export interface UiStyle {
   width?: number;
   height?: number;
   textSize?: number;
   rounded?: number;
+  /** Semantic name (accent, muted, success…) or a raw CSS colour. */
+  color?: string;
+  bold?: boolean;
+  align?: UiAlign;
+  /** Container spacing, in Tailwind-ish px. */
+  gap?: number;
+  pad?: number;
+  variant?: UiVariant;
 }
 
 export interface UiNode {
@@ -138,6 +155,8 @@ export interface UiNode {
   /** Stable within a build pass, used as the React key and input identity. */
   id: string;
   label: string;
+  /** Secondary value: the url for `link`, the placeholder for `input`. */
+  value?: string;
   style: UiStyle;
   children: UiNode[];
   /** Input binding name for `input username`. */

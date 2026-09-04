@@ -1,4 +1,4 @@
-import { useRef, useState, memo } from "react";
+import { useRef, useState, memo, Suspense } from "react";
 import { motion } from "framer-motion";
 import { Minus, Square, X, Copy } from "lucide-react";
 import type { WindowState } from "../../lib/types";
@@ -232,7 +232,16 @@ function Window({ win }: Props) {
         <div className="flex-1 min-h-0">
           {/* One app crashing must not take the OS down with it. */}
           <ErrorBoundary label={app.title} resetKey={win.appData?.path ?? win.windowId}>
-            <AppComponent windowId={win.windowId} appData={win.appData} />
+            {/* Apps are code-split, so each one streams in on first open. */}
+            <Suspense
+              fallback={
+                <div className="h-full flex items-center justify-center text-[11px] text-white/35">
+                  Loading {app.title}…
+                </div>
+              }
+            >
+              <AppComponent windowId={win.windowId} appData={win.appData} />
+            </Suspense>
           </ErrorBoundary>
         </div>
       </motion.div>

@@ -1,4 +1,4 @@
-import { useState, useRef, type KeyboardEvent } from "react";
+import { useEffect, useState, useRef, type KeyboardEvent } from "react";
 import {
   ChevronLeft, ChevronRight, Home, Search, Folder, FileText,
   Download, Image as ImageIcon, Music2, Video, Star, HardDrive, Network, Monitor,
@@ -8,7 +8,7 @@ import { useFsStore, handleCache } from "../store/fsStore";
 import { useContextMenuStore } from "../store/contextMenuStore";
 import { useWindowStore } from "../store/windowStore";
 import { useClipboardStore } from "../store/clipboardStore";
-import { appForFile, baseName, dirName } from "../lib/fileTypes";
+import { appForFile, dirName } from "../lib/fileTypes";
 
 const quickAccess = [
   { name: "Desktop", icon: Monitor, path: "/home/user/desktop" },
@@ -41,7 +41,14 @@ export default function FileExplorer() {
 
   const currentFolders = childrenNames.filter(n => nodes[resolve(n)]?.type === "dir");
   const currentFiles = childrenNames.filter(n => nodes[resolve(n)]?.type === "file");
-  const allItems = [...currentFolders, ...currentFiles];
+  /** Selection holds absolute paths, so it can never be misread against another folder. */
+  const allItems = [...currentFolders, ...currentFiles].map(resolve);
+
+  // Leaving a folder drops its selection; keeping it risked acting on a
+  // same-named file in the folder you navigated to.
+  useEffect(() => {
+    setSelected(new Set());
+  }, [currentPath]);
 
   const goUp = () => {
     if (currentPath === "/") return;
@@ -93,13 +100,42 @@ export default function FileExplorer() {
   const newFolder = () => {
     const path = uniquePath(currentPath, "New folder");
     createDir(path);
-    setSelected(new Set([baseName(path)]));
+    setSelected(new Set([path]));
   };
 
   const newTextFile = () => {
     // Notepad opens empty and saves into this folder, which doubles as the
     // "name your file" step since the filesystem has no inline rename yet.
     openApp("notepad", { dir: currentPath });
+  };
+
+  /** Shared by the keyboard handler and the context menus. */
+  const paste = () => {
+    const copied: string[] = [];
+    clipboardFiles.forEach((src) => {
+      const name = src.split("/").pop();
+      if (!name) return;
+      const node = nodes[src];
+      if (node?.type !== "file") return; // folder copy isn't implemented yet
+      const cutting = clipboardAction === "cut";
+      if (cutting && dirName(src) === currentPath) return; // moving onto itself
+      // Keep the original name when it's free, otherwise fall back to "name (2)".
+      const dest = cutting && !nodes[resolve(name)] ? resolve(name) : uniquePath(currentPath, name);
+      if (dest === src) return;
+      createFile(dest, node.content || "");
+      const handle = handleCache.get(src);
+      if (handle) handleCache.set(dest, handle);
+      copied.push(src);
+    });
+    if (clipboardAction === "cut") {
+      copied.forEach((src) => deleteNode(src));
+      clearClipboard();
+    }
+  };
+
+  const deleteSelection = () => {
+    selected.forEach((path) => deleteNode(path));
+    setSelected(new Set());
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -150,40 +186,23 @@ export default function FileExplorer() {
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
-    if (e.ctrlKey && e.key === "a") {
+    const key = e.key.toLowerCase();
+    if (e.ctrlKey && key === "a") {
       e.preventDefault();
       setSelected(new Set(allItems));
-    } else if (e.ctrlKey && e.key === "c") {
+    } else if (e.ctrlKey && key === "c") {
       e.preventDefault();
-      setClipboard(Array.from(selected).map(resolve), "copy");
-    } else if (e.ctrlKey && e.key === "x") {
+      setClipboard(Array.from(selected), "copy");
+    } else if (e.ctrlKey && key === "x") {
       e.preventDefault();
-      setClipboard(Array.from(selected).map(resolve), "cut");
-    } else if (e.ctrlKey && e.key === "v") {
+      setClipboard(Array.from(selected), "cut");
+    } else if (e.ctrlKey && key === "v") {
       e.preventDefault();
-      const copied: string[] = [];
-      clipboardFiles.forEach((src) => {
-        const name = src.split('/').pop();
-        if (!name) return;
-        const node = nodes[src];
-        if (node?.type !== "file") return; // folder copy isn't implemented yet
-        const cutting = clipboardAction === "cut";
-        if (cutting && dirName(src) === currentPath) return; // moving onto itself
-        // Keep the original name when it's free, otherwise fall back to "name (2)".
-        const dest = cutting && !nodes[resolve(name)] ? resolve(name) : uniquePath(currentPath, name);
-        if (dest === src) return;
-        createFile(dest, node.content || "");
-        const handle = handleCache.get(src);
-        if (handle) handleCache.set(dest, handle);
-        copied.push(src);
-      });
-      if (clipboardAction === "cut") {
-        copied.forEach((src) => deleteNode(src));
-        clearClipboard();
-      }
+      paste();
     } else if (e.key === "Delete") {
       e.preventDefault();
-      Array.from(selected).forEach((s) => deleteNode(resolve(s)));
+      deleteSelection();
+    } else if (e.key === "Escape") {
       setSelected(new Set());
     }
   };
@@ -268,7 +287,7 @@ export default function FileExplorer() {
               { label: "New folder", icon: FolderPlus, onClick: newFolder },
               { label: "New text document", icon: FilePlus, onClick: newTextFile },
               { divider: true, label: "", onClick: () => {} },
-              { label: "Paste", onClick: () => onKeyDown({ key: "v", ctrlKey: true, preventDefault: ()=>{} } as any) },
+              { label: "Paste", onClick: () => paste() },
               { label: "Select all", onClick: () => setSelected(new Set(allItems)) },
             ]);
           }}
@@ -285,69 +304,75 @@ export default function FileExplorer() {
             />
           )}
           <div className="grid grid-cols-5 gap-3">
-            {currentFolders.map((f) => (
+            {currentFolders.map((f) => {
+              const id = resolve(f);
+              return (
               <button
-                key={f}
-                ref={(el) => { if (el) itemRefs.current.set(f, el); else itemRefs.current.delete(f); }}
-                onDoubleClick={() => setCurrentPath(resolve(f))}
+                key={id}
+                ref={(el) => { if (el) itemRefs.current.set(id, el); else itemRefs.current.delete(id); }}
+                onDoubleClick={() => setCurrentPath(id)}
                 onClick={(e) => {
                   const newSet = e.ctrlKey ? new Set(selected) : new Set<string>();
-                  newSet.add(f);
+                  newSet.add(id);
                   setSelected(newSet);
                 }}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  if (!selected.has(f)) setSelected(new Set([f]));
+                  if (!selected.has(id)) setSelected(new Set([id]));
                   openMenu(e.clientX, e.clientY, [
-                    { label: "Open", icon: Folder, onClick: () => setCurrentPath(resolve(f)) },
+                    { label: "Open", icon: Folder, onClick: () => setCurrentPath(id) },
                     { divider: true, label: "", onClick: () => {} },
-                    { label: "Cut", onClick: () => setClipboard(Array.from(selected).map(resolve), "cut") },
-                    { label: "Copy", onClick: () => setClipboard(Array.from(selected).map(resolve), "copy") },
-                    { label: "Paste", onClick: () => onKeyDown({ key: "v", ctrlKey: true, preventDefault: ()=>{} } as any) },
-                    { label: "Delete", icon: Trash2, onClick: () => Array.from(selected).forEach(s => deleteNode(resolve(s))) },
+                    { label: "Cut", onClick: () => setClipboard(Array.from(selected), "cut") },
+                    { label: "Copy", onClick: () => setClipboard(Array.from(selected), "copy") },
+                    { label: "Paste", onClick: () => paste() },
+                    { label: "Delete", icon: Trash2, onClick: () => deleteSelection() },
                   ]);
                 }}
                 className={`flex flex-col items-center gap-1.5 p-2 rounded-lg ${
-                  selected.has(f) ? "bg-blue-500/30 ring-1 ring-blue-500/50" : "hover:bg-white/5"
+                  selected.has(id) ? "bg-blue-500/30 ring-1 ring-blue-500/50" : "hover:bg-white/5"
                 }`}
               >
                 <Folder size={40} className="text-yellow-500 fill-yellow-500/20" />
                 <span className="text-xs text-center break-all">{f}</span>
               </button>
-            ))}
-            {currentFiles.map((file) => (
+              );
+            })}
+            {currentFiles.map((file) => {
+              const id = resolve(file);
+              return (
               <button
-                key={file}
-                ref={(el) => { if (el) itemRefs.current.set(file, el); else itemRefs.current.delete(file); }}
-                onDoubleClick={() => handleFileOpen(resolve(file))}
+                key={id}
+                ref={(el) => { if (el) itemRefs.current.set(id, el); else itemRefs.current.delete(id); }}
+                onDoubleClick={() => handleFileOpen(id)}
                 onClick={(e) => {
                   const newSet = e.ctrlKey ? new Set(selected) : new Set<string>();
-                  newSet.add(file);
+                  newSet.add(id);
                   setSelected(newSet);
                 }}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  if (!selected.has(file)) setSelected(new Set([file]));
+                  if (!selected.has(id)) setSelected(new Set([id]));
                   openMenu(e.clientX, e.clientY, [
-                    { label: "Open", icon: FileText, onClick: () => handleFileOpen(resolve(file)) },
-                    { label: "Open with Notepad", icon: NotepadText, onClick: () => openApp("notepad", { path: resolve(file) }) },
+                    { label: "Open", icon: FileText, onClick: () => handleFileOpen(id) },
+                    { label: "Open with Notepad", icon: NotepadText, onClick: () => openApp("notepad", { path: id }) },
                     { divider: true, label: "", onClick: () => {} },
-                    { label: "Cut", onClick: () => setClipboard(Array.from(selected).map(resolve), "cut") },
-                    { label: "Copy", onClick: () => setClipboard(Array.from(selected).map(resolve), "copy") },
-                    { label: "Paste", onClick: () => onKeyDown({ key: "v", ctrlKey: true, preventDefault: ()=>{} } as any) },
-                    { label: "Delete", icon: Trash2, onClick: () => Array.from(selected).forEach(s => deleteNode(resolve(s))) },
+                    { label: "Cut", onClick: () => setClipboard(Array.from(selected), "cut") },
+                    { label: "Copy", onClick: () => setClipboard(Array.from(selected), "copy") },
+                    { label: "Paste", onClick: () => paste() },
+                    { label: "Delete", icon: Trash2, onClick: () => deleteSelection() },
                   ]);
                 }}
                 className={`flex flex-col items-center gap-1.5 p-2 rounded-lg ${
-                  selected.has(file) ? "bg-blue-500/30 ring-1 ring-blue-500/50" : "hover:bg-white/5"
+                  selected.has(id) ? "bg-blue-500/30 ring-1 ring-blue-500/50" : "hover:bg-white/5"
                 }`}
               >
                 <FileText size={40} className="text-white/80" />
                 <span className="text-xs text-center break-all">{file}</span>
               </button>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>

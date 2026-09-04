@@ -1,8 +1,9 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, createJSONStorage } from "zustand/middleware";
 import type { AppId, WindowState } from "../lib/types";
 import { APPS } from "../apps/registry";
 import { TASKBAR_HEIGHT } from "../lib/constants";
+import { throttledLocalStorage } from "../lib/persistStorage";
 
 interface WindowStore {
   windows: WindowState[];
@@ -42,11 +43,46 @@ export const registerCloseGuard = (windowId: string, guard: (() => boolean) | nu
   else closeGuards.delete(windowId);
 };
 
+const Z_BASE = 10;
+/**
+ * z-index has to stay well under the shell's layers (context menu 100, Alt-Tab
+ * 200, taskbar 9999). `topZ` used to grow forever and was persisted, so after
+ * enough clicks windows painted over the OS chrome. Once the counter reaches
+ * the ceiling every window is renumbered in place, preserving stacking order.
+ */
+const Z_CEILING = 90;
+
+/** Raises one window to the front, compacting z-indexes when they get high. */
+const raise = (windows: WindowState[], topZ: number, windowId: string) => {
+  const nextZ = topZ + 1;
+  if (nextZ < Z_CEILING) {
+    return {
+      windows: windows.map((w) =>
+        w.windowId === windowId ? { ...w, z: nextZ, minimized: false } : w
+      ),
+      topZ: nextZ,
+    };
+  }
+
+  const order = [...windows]
+    .sort((a, b) => (a.windowId === windowId ? 1 : b.windowId === windowId ? -1 : a.z - b.z))
+    .map((w) => w.windowId);
+  const rank = new Map(order.map((id, index) => [id, Z_BASE + index]));
+  return {
+    windows: windows.map((w) => ({
+      ...w,
+      z: rank.get(w.windowId) ?? Z_BASE,
+      minimized: w.windowId === windowId ? false : w.minimized,
+    })),
+    topZ: Z_BASE + order.length,
+  };
+};
+
 export const useWindowStore = create<WindowStore>()(
   persist(
     (set, get) => ({
       windows: [],
-      topZ: 10,
+      topZ: Z_BASE,
       desktops: ["Desktop 1"],
       activeDesktopId: "Desktop 1",
 
@@ -109,10 +145,10 @@ export const useWindowStore = create<WindowStore>()(
           appData,
         };
 
-        set((s) => ({
-          windows: [...s.windows, { ...newWindow, z: s.topZ + 1 }],
-          topZ: s.topZ + 1,
-        }));
+        set((s) => {
+          const withNew = [...s.windows, newWindow];
+          return raise(withNew, s.topZ, newWindow.windowId);
+        });
       },
 
       closeWindow: (windowId) => {
@@ -132,12 +168,7 @@ export const useWindowStore = create<WindowStore>()(
           if (!target) return s;
           // Avoid a store write (and a localStorage write) on every click.
           if (target.z === s.topZ && !target.minimized) return s;
-          return {
-            windows: s.windows.map((w) =>
-              w.windowId === windowId ? { ...w, z: s.topZ + 1, minimized: false } : w
-            ),
-            topZ: s.topZ + 1,
-          };
+          return raise(s.windows, s.topZ, windowId);
         }),
 
       minimizeWindow: (windowId) =>
@@ -219,6 +250,7 @@ export const useWindowStore = create<WindowStore>()(
     }),
     {
       name: "novaos-window-store",
+      storage: createJSONStorage(() => throttledLocalStorage),
     }
   )
 );

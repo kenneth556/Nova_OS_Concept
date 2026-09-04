@@ -105,9 +105,17 @@ export function analyze(program: Stmt[]): BlakAppInfo {
 
 /* ------------------------------------------------------------------ runtime */
 
-const UI_ELEMENTS = new Set(["text", "button", "input", "image", "box", "card", "column", "row"]);
+const UI_ELEMENTS = new Set([
+  "text", "heading", "subtitle", "badge", "divider", "spacer", "link",
+  "button", "input", "image", "box", "card", "column", "row",
+]);
 const CONTAINERS = new Set(["box", "card", "column", "row"]);
-const STYLE_DIRECTIVES = new Set(["size", "text_size", "rounded", "title", "resizable"]);
+const STYLE_DIRECTIVES = new Set([
+  "size", "text_size", "rounded", "title", "resizable",
+  "color", "bold", "align", "gap", "pad", "variant",
+]);
+/** Style directives whose argument reads as a name, not a variable. */
+const STYLE_WORDS = new Set(["color", "align", "variant"]);
 /** Directives whose bare-identifier argument is a name, not a variable. */
 const BAREWORD_DIRECTIVES = new Set(["theme", "input"]);
 
@@ -296,7 +304,14 @@ export class BlakRuntime {
       const max = toNumber(arg(args, 0), line);
       return Math.floor(Math.random() * max);
     }));
-    g.set("number", this.native("number", (args, line) => toNumber(arg(args, 0), line)));
+    g.set("number", this.native("number", (args) => {
+      const value = arg(args, 0);
+      if (typeof value === "number") return value;
+      const parsed = Number(toText(value));
+      // Lenient on purpose: an empty or half-typed field reads as 0 rather than
+      // throwing in the middle of a form.
+      return Number.isFinite(parsed) ? parsed : 0;
+    }));
     g.set("string", this.native("string", (args) => toText(arg(args, 0))));
     g.set("join", this.native("join", (args) => {
       const value = arg(args, 0);
@@ -323,6 +338,7 @@ export class BlakRuntime {
       return target;
     }));
     g.set("now", this.native("now", () => new Date().toLocaleString()));
+    g.set("encode", this.native("encode", (args) => encodeURIComponent(toText(arg(args, 0)))));
 
     const files = new Map<string, BlakValue>();
     files.set("list", this.native("files.list", (args) =>
@@ -518,6 +534,11 @@ export class BlakRuntime {
     if (targetExpr.kind === "ident") {
       const found = lookup(scope, targetExpr.name);
       (found ? found.scope : this.globals).vars.set(targetExpr.name, value);
+      // Assigning to a bound field name also updates the visible input, so
+      // `newItem = ""` genuinely clears the box.
+      if (this.inputs.has(targetExpr.name)) {
+        this.inputs.set(targetExpr.name, toText(value));
+      }
       return;
     }
     if (targetExpr.kind === "member") {
@@ -550,6 +571,14 @@ export class BlakRuntime {
     return toText(this.evaluate(argExpr, scope));
   }
 
+  /** `color accent` and `align center` read as words, not variable lookups. */
+  private directiveWord(stmt: Stmt & { kind: "directive" }, scope: Scope, index = 0): string {
+    const argExpr = stmt.args[index];
+    if (!argExpr) return "";
+    if (argExpr.kind === "ident") return argExpr.name;
+    return toText(this.evaluate(argExpr, scope));
+  }
+
   private applyStyle(stmt: Stmt & { kind: "directive" }, scope: Scope, target: BuildTarget) {
     const numberArg = (i: number, fallback?: number) => {
       const expr = stmt.args[i];
@@ -577,8 +606,22 @@ export class BlakRuntime {
       }
       return;
     }
-    if (stmt.name === "text_size" && target.node) target.node.style.textSize = numberArg(0);
-    if (stmt.name === "rounded" && target.node) target.node.style.rounded = numberArg(0);
+
+    const style = target.node?.style;
+    if (!style) return;
+
+    if (stmt.name === "text_size") style.textSize = numberArg(0);
+    else if (stmt.name === "rounded") style.rounded = numberArg(0);
+    else if (stmt.name === "gap") style.gap = numberArg(0);
+    else if (stmt.name === "pad") style.pad = numberArg(0);
+    else if (stmt.name === "bold") {
+      style.bold = stmt.args[0] ? truthy(this.evaluate(stmt.args[0], scope)) : true;
+    } else if (STYLE_WORDS.has(stmt.name)) {
+      const word = this.directiveWord(stmt, scope);
+      if (stmt.name === "color") style.color = word;
+      else if (stmt.name === "align") style.align = word as UiStyle["align"];
+      else if (stmt.name === "variant") style.variant = word as UiStyle["variant"];
+    }
   }
 
   private execDirective(stmt: Stmt & { kind: "directive" }, scope: Scope, target: BuildTarget) {
@@ -679,10 +722,19 @@ export class BlakRuntime {
       // `input username` binds the field to a variable of that name.
       const binding = this.directiveText(stmt, scope) || `field${node.id}`;
       node.binding = binding;
-      node.label = stmt.args[1] ? toText(this.evaluate(stmt.args[1], scope)) : "";
+      node.value = stmt.args[1] ? toText(this.evaluate(stmt.args[1], scope)) : "";
       const existing = this.inputs.get(binding) ?? "";
       this.inputs.set(binding, existing);
       this.globals.vars.set(binding, existing);
+    } else if (stmt.name === "link") {
+      // `link "Docs", "https://…"`
+      node.label = this.directiveText(stmt, scope, 0);
+      node.value = this.directiveText(stmt, scope, 1) || node.label;
+    } else if (stmt.name === "spacer") {
+      // `spacer 24` is the height, not a label.
+      if (stmt.args[0]) {
+        node.style.height = Math.round(toNumber(this.evaluate(stmt.args[0], scope), stmt.line));
+      }
     } else {
       node.label = stmt.args.length > 0
         ? stmt.args.map((a) => toText(this.evaluate(a, scope))).join(" ")
@@ -697,7 +749,7 @@ export class BlakRuntime {
       window: null,
     };
 
-    if (stmt.name === "button") {
+    if (stmt.name === "button" || stmt.name === "link") {
       const explicitClick = body.find((s) => s.kind === "directive" && s.name === "click");
       const styleOnly = body.filter((s) => s.kind === "directive" && STYLE_DIRECTIVES.has(s.name));
       for (const styleStmt of styleOnly) this.execStatement(styleStmt, scope, elementTarget);

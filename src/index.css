@@ -110,6 +110,9 @@ input, textarea {
 [data-theme="light"] .bg-\[\#16151f\],
 [data-theme="light"] .bg-\[\#17151f\],
 [data-theme="light"] .bg-\[\#1e1e2e\],
+[data-theme="light"] .bg-\[\#1e1e1e\],
+[data-theme="light"] .bg-\[\#151220\],
+[data-theme="light"] .bg-\[\#0f0f14\],
 [data-theme="light"] .bg-\[\#1b1a26\],
 [data-theme="light"] .bg-\[\#101019\] { background-color: #f5f5f8; }
 
@@ -137,3 +140,5 @@ input, textarea {
 [data-theme="light"] .bg-black\/20 { background-color: rgba(16, 15, 24, 0.05); }
 [data-theme="light"] .bg-black\/30 { background-color: rgba(16, 15, 24, 0.07); }
 [data-theme="light"] .caret-white { caret-color: #16151d; }
+/* Terminal keeps its own text colour, so it needs its own light override. */
+[data-theme="light"] .text-\[\#d4d4d4\] { color: #23222c; }

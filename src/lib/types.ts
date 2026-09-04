@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import type { ComponentType, LazyExoticComponent } from "react";
 
 export type AppId =
   | "files"
@@ -10,6 +10,9 @@ export type AppId =
   | "music"
   | "settings"
   | "browser"
+  | "novatube"
+  | "novaflix"
+  | "novamusic"
   | "calendar"
   | "terminal"
   | "codeStudio"
@@ -34,7 +37,8 @@ export interface AppDefinition {
   title: string;
   icon: ComponentType<{ size?: number; className?: string }>;
   iconBg: string; // tailwind gradient classes for the icon tile
-  component: ComponentType<AppProps>;
+  /** Apps are code-split, so this is usually a `lazy()` component. */
+  component: ComponentType<AppProps> | LazyExoticComponent<ComponentType<AppProps>>;
   defaultSize: { width: number; height: number };
   minSize?: { width: number; height: number };
   pinned?: boolean;

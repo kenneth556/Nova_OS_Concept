@@ -42,7 +42,10 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 export default function Settings() {
   const [active, setActive] = useState("appearance");
   const [query, setQuery] = useState("");
-  const { quickSettings, setQuickSetting } = useSystemStore();
+  // Individual selectors: subscribing to the whole store re-rendered Settings
+  // once a second, because the clock lives in there too.
+  const quickSettings = useSystemStore((s) => s.quickSettings);
+  const setQuickSetting = useSystemStore((s) => s.setQuickSetting);
 
   const filtered = categories.filter((c) => c.label.toLowerCase().includes(query.toLowerCase()));
 

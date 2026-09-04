@@ -1,22 +1,10 @@
-import { Folder, Calculator as CalculatorIcon, StickyNote, Image, Music2, Settings2, Globe, CalendarDays, TerminalSquare, Activity, Video, FileText, NotepadText, Palette, Code2, Store, Boxes } from "lucide-react";
+import { Folder, Calculator as CalculatorIcon, StickyNote, Image, Music2, Settings2, Globe, CalendarDays, TerminalSquare, Activity, Video, FileText, NotepadText, Palette, Code2, Store, Boxes, SquarePlay, Clapperboard, AudioLines } from "lucide-react";
 import type { AppDefinition } from "../lib/types";
-import FileExplorer from "./FileExplorer";
-import Calculator from "./Calculator";
-import Notes from "./Notes";
-import Notepad from "./Notepad";
-import Photos from "./Photos";
-import Paint from "./Paint";
-import Music from "./Music";
-import Settings from "./Settings";
-import Browser from "./Browser";
-import Calendar from "./Calendar";
-import Terminal from "./Terminal";
-import CodeStudio from "./CodeStudio";
-import AppStore from "./AppStore";
-import BlakApp from "./BlakApp";
-import TaskManager from "./TaskManager";
-import MediaPlayer from "./MediaPlayer";
-import PdfViewer from "./PdfViewer";
+import {
+  FileExplorer, Calculator, Notes, Notepad, Photos, Paint, Music, Settings, Browser, NovaTube,
+  NovaFlix, NovaMusic,
+  Calendar, Terminal, CodeStudio, AppStore, BlakApp, TaskManager, MediaPlayer, PdfViewer,
+} from "./lazyApps";
 
 /** Windows saved before an app was renamed still carry the old id. */
 const LEGACY_APP_IDS: Record<string, string> = {
@@ -61,6 +49,36 @@ export const APPS: AppDefinition[] = [
     iconBg: "bg-yellow-500",
     component: Notes,
     defaultSize: { width: 680, height: 460 },
+    pinned: true,
+  },
+  {
+    id: "novatube",
+    title: "NovaTube",
+    icon: SquarePlay,
+    iconBg: "bg-red-600",
+    component: NovaTube,
+    defaultSize: { width: 1000, height: 660 },
+    minSize: { width: 420, height: 340 },
+    pinned: true,
+  },
+  {
+    id: "novaflix",
+    title: "NovaFlix",
+    icon: Clapperboard,
+    iconBg: "bg-red-700",
+    component: NovaFlix,
+    defaultSize: { width: 1040, height: 680 },
+    minSize: { width: 460, height: 360 },
+    pinned: true,
+  },
+  {
+    id: "novamusic",
+    title: "NovaMusic",
+    icon: AudioLines,
+    iconBg: "bg-green-600",
+    component: NovaMusic,
+    defaultSize: { width: 1020, height: 680 },
+    minSize: { width: 480, height: 420 },
     pinned: true,
   },
   {

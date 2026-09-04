@@ -19,18 +19,36 @@ function Toaster() {
   const [visible, setVisible] = useState<NotificationItem[]>([]);
   const seen = useRef<Set<string>>(new Set());
   const mountedAt = useRef(Date.now());
+  const timers = useRef<number[]>([]);
+
+  useEffect(
+    () => () => {
+      for (const id of timers.current) window.clearTimeout(id);
+      timers.current = [];
+    },
+    []
+  );
 
   useEffect(() => {
-    if (doNotDisturb) return;
     const fresh = notifications.filter(
       (n) => !seen.current.has(n.id) && n.createdAt !== undefined && n.createdAt >= mountedAt.current
     );
     if (fresh.length === 0) return;
+
+    // Mark them seen even under Do Not Disturb, so turning DND off doesn't dump
+    // a backlog of toasts on screen at once.
+    for (const item of fresh) seen.current.add(item.id);
+    if (seen.current.size > 200) {
+      seen.current = new Set([...seen.current].slice(-100));
+    }
+    if (doNotDisturb) return;
+
     for (const item of fresh) {
-      seen.current.add(item.id);
-      window.setTimeout(() => {
-        setVisible((current) => current.filter((n) => n.id !== item.id));
-      }, 5000);
+      timers.current.push(
+        window.setTimeout(() => {
+          setVisible((current) => current.filter((n) => n.id !== item.id));
+        }, 5000)
+      );
     }
     setVisible((current) => [...fresh, ...current].slice(0, 3));
   }, [notifications, doNotDisturb]);
@@ -75,7 +93,8 @@ function App() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Meta") {
+      // `repeat` guard: holding the key otherwise flickered the menu open/shut.
+      if (e.key === "Meta" && !e.repeat) {
         toggleStartMenu();
       }
     };

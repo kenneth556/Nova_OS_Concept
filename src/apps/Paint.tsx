@@ -12,7 +12,7 @@ import FileDialog from "../components/FileDialog";
 type Tool = "brush" | "eraser" | "line" | "rect" | "ellipse" | "fill" | "pick";
 type DialogMode = "open" | "save" | null;
 /** What should happen once a "save first?" prompt is answered. */
-type PendingAction = "close" | "new" | null;
+type PendingAction = "close" | "new" | "open" | null;
 
 interface Drag {
   tool: Tool;
@@ -541,6 +541,12 @@ export default function Paint({ windowId, appData }: AppProps) {
     else newDrawing();
   };
 
+  /** Opening replaces the canvas, so it needs the same guard as New and Close. */
+  const requestOpen = () => {
+    if (dirty) setPending("open");
+    else setDialog("open");
+  };
+
   const clearCanvas = () => {
     commit((ctx) => {
       ctx.fillStyle = WHITE;
@@ -563,6 +569,8 @@ export default function Paint({ windowId, appData }: AppProps) {
       forceCloseWindow(windowId);
     } else if (action === "new") {
       newDrawing();
+    } else if (action === "open") {
+      setDialog("open");
     }
   };
 
@@ -697,7 +705,7 @@ export default function Paint({ windowId, appData }: AppProps) {
       else void save();
     } else if (mod && key === "o") {
       e.preventDefault();
-      setDialog("open");
+      requestOpen();
     } else if (mod && key === "n") {
       e.preventDefault();
       requestNew();
@@ -731,7 +739,7 @@ export default function Paint({ windowId, appData }: AppProps) {
         <button className={toolbarButton} onClick={requestNew} title="New drawing (Ctrl+N)">
           <FilePlus size={13} /> New
         </button>
-        <button className={toolbarButton} onClick={() => setDialog("open")} title="Open an image (Ctrl+O)">
+        <button className={toolbarButton} onClick={requestOpen} title="Open an image (Ctrl+O)">
           <FolderOpen size={13} /> Open
         </button>
         <button className={toolbarButton} onClick={() => void save()} title="Save (Ctrl+S)">
@@ -952,7 +960,9 @@ export default function Paint({ windowId, appData }: AppProps) {
           <div className="w-full max-w-sm bg-[#1b1a26] border border-white/10 rounded-xl shadow-2xl p-4">
             <div className="text-sm font-medium mb-1">Save changes to {fileName}?</div>
             <div className="text-xs text-white/50 mb-4">
-              Your drawing will be lost if you don't save it.
+              {pending === "open"
+                ? "Opening another image replaces what's on the canvas."
+                : "Your drawing will be lost if you don't save it."}
             </div>
             <div className="flex justify-end gap-2">
               <button

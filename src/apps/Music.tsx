@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Play, Pause, Home, Search, Library, ListMusic, Shuffle, MoreHorizontal, SkipBack, SkipForward, Volume2 } from "lucide-react";
+import { Play, Pause, Home, Search, Library, ListMusic, Shuffle, SkipBack, SkipForward, Volume2 } from "lucide-react";
 import { handleCache } from "../store/fsStore";
 import { useSystemStore } from "../store/systemStore";
 
@@ -18,6 +18,8 @@ export default function Music({ appData }: { appData?: any }) {
   const [localTrack, setLocalTrack] = useState<any>(null);
   const [progress, setProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [shuffle, setShuffle] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // The system volume slider is the real volume control.
@@ -73,10 +75,13 @@ export default function Music({ appData }: { appData?: any }) {
 
   const goToOffset = (offset: number) => {
     if (playlist.length === 0) return;
-    const next = (activeIndex + offset + playlist.length) % playlist.length;
+    const next = shuffle && playlist.length > 1
+      ? (activeIndex + 1 + Math.floor(Math.random() * (playlist.length - 1))) % playlist.length
+      : (activeIndex + offset + playlist.length) % playlist.length;
     setActiveTrackId(playlist[next].id);
     setCurrentTime(0);
     setProgress(0);
+    setDuration(0);
     setPlaying(true);
   };
 
@@ -147,7 +152,7 @@ export default function Music({ appData }: { appData?: any }) {
                 </tr>
               </thead>
               <tbody>
-                {tracks.map((t) => (
+                {playlist.map((t, index) => (
                   <tr
                     key={t.id}
                     onClick={() => {
@@ -158,7 +163,7 @@ export default function Music({ appData }: { appData?: any }) {
                       activeTrackId === t.id ? "bg-blue-500/15 text-blue-300" : "hover:bg-white/5"
                     }`}
                   >
-                    <td className="px-4 py-2">{t.id}</td>
+                    <td className="px-4 py-2">{index + 1}</td>
                     <td className="px-2 py-2">{t.title}</td>
                     <td className="px-2 py-2 text-white/50">{t.artist}</td>
                     <td className="px-2 py-2 text-white/50">{t.album}</td>
@@ -221,11 +226,13 @@ export default function Music({ appData }: { appData?: any }) {
           className="w-20 accent-blue-500"
         />
       </div>
-      <audio 
-        ref={audioRef} 
-        src={activeTrack.src} 
+      <audio
+        ref={audioRef}
+        src={activeTrack.src}
         onTimeUpdate={handleTimeUpdate}
+        onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
         onEnded={handleEnded}
+        onError={() => setPlaying(false)}
       />
     </div>
   );

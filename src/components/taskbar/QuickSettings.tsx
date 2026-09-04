@@ -32,7 +32,9 @@ function Tile({
 }
 
 export default function QuickSettings() {
-  const { quickSettings, setQuickSetting, closeQuickSettings } = useSystemStore();
+  const quickSettings = useSystemStore((s) => s.quickSettings);
+  const setQuickSetting = useSystemStore((s) => s.setQuickSetting);
+  const closeQuickSettings = useSystemStore((s) => s.closeQuickSettings);
 
   return (
     <>

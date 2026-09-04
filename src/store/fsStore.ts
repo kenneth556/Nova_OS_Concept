@@ -1,6 +1,7 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, createJSONStorage } from "zustand/middleware";
 import { STARTER_TEMPLATE } from "../blak/samples";
+import { throttledLocalStorage } from "../lib/persistStorage";
 
 /**
  * Live File System Access API handles for files mounted from the real disk.
@@ -207,6 +208,7 @@ export const useFsStore = create<FSState>()(
     {
       name: "novaos-fs-store",
       version: 2,
+      storage: createJSONStorage(() => throttledLocalStorage),
       /**
        * Older saved trees predate the seed folders and timestamps, so merge the
        * seed in rather than dropping whatever the user already created.

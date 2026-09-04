@@ -134,8 +134,13 @@ export default function BlakApp({ windowId, appData }: AppProps) {
       )}
 
       {built && built.spec && runtime && (
-        <div className="flex-1 min-h-0 overflow-y-auto p-4">
-          <BlakUi nodes={built.nodes} runtime={runtime} dataDir={slugFolder(declaredName)} />
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-5">
+          <BlakUi
+            nodes={built.nodes}
+            runtime={runtime}
+            dataDir={slugFolder(declaredName)}
+            onOpenUrl={(url) => openApp("browser", { startUrl: url })}
+          />
         </div>
       )}
 

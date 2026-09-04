@@ -4,6 +4,9 @@ import type { Expr, IfBranch, Stmt, Token } from "./types";
 /** Words that read as a prefix command inside an expression: `data = read "a.txt"`. */
 const COMMAND_EXPRESSIONS = new Set(["read", "get"]);
 
+/** Elements that are complete on their own, with no argument and no block. */
+const BARE_DIRECTIVES = new Set(["divider", "spacer"]);
+
 export function parse(tokens: Token[]): Stmt[] {
   let pos = 0;
 
@@ -402,7 +405,7 @@ export function parse(tokens: Token[]): Stmt[] {
         return { kind: "func", name: token.value, params, body: parseBlock(), line: token.line };
       }
 
-      if (looksLikeDirective()) {
+      if (looksLikeDirective() || BARE_DIRECTIVES.has(token.value)) {
         advance();
         const args: Expr[] = [];
         // `size 500, 400` — comma separated, ends at the block or the line end.

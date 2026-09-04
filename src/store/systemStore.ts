@@ -1,6 +1,7 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, createJSONStorage } from "zustand/middleware";
 import type { NotificationItem } from "../lib/types";
+import { throttledLocalStorage } from "../lib/persistStorage";
 
 export type BootStage = "booting" | "lock" | "desktop";
 
@@ -135,9 +136,20 @@ export const useSystemStore = create<SystemStore>()(
 }),
     {
       name: "novaos-system-store",
+      storage: createJSONStorage(() => throttledLocalStorage),
       partialize: (state) => {
-        // Transient shell state is deliberately not persisted.
-        const { now: _now, stage: _stage, bootProgressLabel: _label, ...rest } = state as any;
+        // Transient shell state is deliberately not persisted: the clock, the
+        // boot stage, and which flyout happened to be open.
+        const {
+          now: _now,
+          stage: _stage,
+          bootProgressLabel: _label,
+          startMenuOpen: _start,
+          notificationCenterOpen: _notifications,
+          quickSettingsOpen: _quick,
+          searchOpen: _search,
+          ...rest
+        } = state as any;
         return rest;
       },
     }
