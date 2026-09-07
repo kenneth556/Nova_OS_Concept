@@ -1,13 +1,15 @@
 import { useMemo, useState } from "react";
 import {
-  Store, Download, Trash2, Play, ShieldCheck, Upload, Code2, CircleCheck, Search, ChevronLeft,
-  Sparkles, KeyRound, Boxes, ChevronDown, ChevronUp,
+  Download, Trash2, Play, ShieldCheck, Upload, Code2, CircleCheck, Search,
+  KeyRound, ChevronDown, ChevronUp, Star,
+  Home, Library, ArrowLeft,
 } from "lucide-react";
-import type { AppProps } from "../lib/types";
+import type { AppDefinition, AppProps } from "../lib/types";
 import { useBlakStore, parsePackage, packageId, type BlakPackage, type InstalledApp } from "../store/blakStore";
+import { useInstallStore } from "../store/installStore";
 import { useFsStore } from "../store/fsStore";
 import { useWindowStore } from "../store/windowStore";
-import { APPS } from "./registry";
+import { INSTALLABLE_APPS } from "./registry";
 import { BLAK_SAMPLES } from "../blak/samples";
 import { PERMISSION_LABELS, PERMISSIONS } from "../blak/types";
 import type { Permission } from "../blak/types";
@@ -15,7 +17,12 @@ import FileDialog from "../components/FileDialog";
 
 const PROJECTS_DIR = "/home/user/projects";
 
-type Filter = "all" | "installed" | "available";
+
+
+/** The store lists two very different things, so they share one shape here. */
+type StoreItem =
+  | { kind: "native"; key: string; app: AppDefinition }
+  | { kind: "blak"; key: string; pkg: BlakPackage };
 
 const asPackage = (sample: (typeof BLAK_SAMPLES)[number]): BlakPackage => ({
   blak: 1,
@@ -27,6 +34,8 @@ const asPackage = (sample: (typeof BLAK_SAMPLES)[number]): BlakPackage => ({
   color: sample.color,
   permissions: sample.permissions,
   source: sample.source,
+  rating: sample.rating,
+  reviews: sample.reviews,
 });
 
 const permissionLabel = (name: string) =>
@@ -34,87 +43,146 @@ const permissionLabel = (name: string) =>
     ? PERMISSION_LABELS[name as Permission]
     : `Use "${name}" (unknown to this version of NovaOS)`;
 
-const countLines = (source: string) => source.trim().split("\n").length;
 
-/** The gradient tile every app is represented by. */
-function AppTile({ pkg, size = 56 }: { pkg: BlakPackage; size?: number }) {
+
+const itemName = (item: StoreItem) => (item.kind === "native" ? item.app.title : item.pkg.name);
+const itemDescription = (item: StoreItem) =>
+  item.kind === "native" ? item.app.store?.description ?? "" : item.pkg.description;
+const itemAuthor = (item: StoreItem) =>
+  item.kind === "native" ? item.app.store?.author ?? "NovaOS" : item.pkg.author;
+const itemRating = (item: StoreItem) =>
+  item.kind === "native" ? item.app.store?.rating : item.pkg.rating;
+const itemReviews = (item: StoreItem) =>
+  item.kind === "native" ? item.app.store?.reviews : item.pkg.reviews;
+
+function StarRating({ value, size = 10 }: { value?: number; size?: number }) {
+  if (!value) return null;
+  const full = Math.floor(value);
+  const half = value - full >= 0.5;
+  const stars = Array.from({ length: 5 }, (_, i) => i < full ? "full" : i === full && half ? "half" : "empty");
+  return (
+    <div className="flex items-center gap-0.5">
+      {stars.map((state, i) => (
+        <Star
+          key={i}
+          size={size}
+          className={
+            state === "full"
+              ? "text-amber-400 fill-amber-400"
+              : state === "half"
+                ? "text-amber-400 fill-amber-400/50"
+                : "text-white/20"
+          }
+        />
+      ))}
+      <span className="text-[10px] text-white/50 ml-1">{value.toFixed(1)}</span>
+    </div>
+  );
+}
+
+/** The gradient tile every listing is represented by. */
+function ItemTile({ item, size = 56 }: { item: StoreItem; size?: number }) {
+  const bg = item.kind === "native" ? item.app.iconBg : item.pkg.color;
   return (
     <div
-      className={`relative ${pkg.color} rounded-2xl flex items-center justify-center shrink-0 overflow-hidden shadow-lg shadow-black/25`}
+      className={`relative ${bg} rounded-2xl flex items-center justify-center shrink-0 overflow-hidden shadow-lg shadow-black/25`}
       style={{ width: size, height: size, fontSize: size * 0.45 }}
     >
       <div className="absolute inset-0 bg-gradient-to-br from-white/25 via-transparent to-black/20" />
-      <span className="relative leading-none">{pkg.icon}</span>
+      {item.kind === "native" ? (
+        <item.app.icon size={Math.round(size * 0.42)} className="text-white relative" />
+      ) : (
+        <span className="relative leading-none">{item.pkg.icon}</span>
+      )}
     </div>
   );
 }
 
 export default function AppStore(_props: AppProps) {
-  const installedApps = useBlakStore((s) => s.apps);
+  const blakApps = useBlakStore((s) => s.apps);
   const install = useBlakStore((s) => s.install);
   const uninstall = useBlakStore((s) => s.uninstall);
+  const installedNative = useInstallStore((s) => s.installed);
+  const installNative = useInstallStore((s) => s.install);
+  const uninstallNative = useInstallStore((s) => s.uninstall);
   const writeFile = useFsStore((s) => s.writeFile);
   const ensureDir = useFsStore((s) => s.ensureDir);
   const openApp = useWindowStore((s) => s.openApp);
 
-  const catalogue = useMemo(() => BLAK_SAMPLES.map(asPackage), []);
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
-  const [openName, setOpenName] = useState<string | null>(null);
+  const [navTab, setNavTab] = useState<"home" | "library">("home");
+  const [openKey, setOpenKey] = useState<string | null>(null);
   const [showSource, setShowSource] = useState(false);
   const [consent, setConsent] = useState<{ pkg: BlakPackage; allow: Set<string> } | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
 
-  const installedById = useMemo(() => {
+  const blakById = useMemo(() => {
     const map = new Map<string, InstalledApp>();
-    for (const app of installedApps) map.set(app.id, app);
+    for (const app of blakApps) map.set(app.id, app);
     return map;
-  }, [installedApps]);
+  }, [blakApps]);
 
-  /** Catalogue entries plus anything installed that isn't in the catalogue. */
-  const allPackages = useMemo(() => {
-    const extras = installedApps
-      .filter((app) => !catalogue.some((pkg) => packageId(pkg.name) === app.id))
-      .map((app) => ({ ...app } as BlakPackage));
-    return [...catalogue, ...extras];
-  }, [catalogue, installedApps]);
+  const items = useMemo<StoreItem[]>(() => {
+    const natives: StoreItem[] = INSTALLABLE_APPS.map((app) => ({
+      kind: "native",
+      key: `native:${app.id}`,
+      app,
+    }));
+    const catalogue: StoreItem[] = BLAK_SAMPLES.map((sample) => {
+      const pkg = asPackage(sample);
+      return { kind: "blak", key: `blak:${pkg.name}`, pkg };
+    });
+    const extras: StoreItem[] = blakApps
+      .filter((app) => !BLAK_SAMPLES.some((sample) => packageId(sample.name) === app.id))
+      .map((app) => ({ kind: "blak", key: `blak:${app.name}`, pkg: app as BlakPackage }));
+    return [...natives, ...catalogue, ...extras];
+  }, [blakApps]);
 
-  const visible = allPackages.filter((pkg) => {
-    const needle = query.trim().toLowerCase();
-    if (needle && !pkg.name.toLowerCase().includes(needle) && !pkg.description.toLowerCase().includes(needle)) {
-      return false;
-    }
-    const isInstalled = installedById.has(packageId(pkg.name));
-    if (filter === "installed") return isInstalled;
-    if (filter === "available") return !isInstalled;
-    return true;
-  });
+  const isInstalled = (item: StoreItem) =>
+    item.kind === "native"
+      ? installedNative.includes(item.app.id)
+      : blakById.has(packageId(item.pkg.name));
 
-  const selected = openName ? allPackages.find((pkg) => pkg.name === openName) ?? null : null;
-  const selectedInstalled = selected ? installedById.get(packageId(selected.name)) : undefined;
-
-  const beginInstall = (pkg: BlakPackage) => {
+  const beginInstall = (item: StoreItem) => {
     setError(null);
-    if (pkg.permissions.length === 0) {
-      install(pkg, []);
-      setFlash(`Installed "${pkg.name}".`);
+    if (item.kind === "native") {
+      installNative(item.app.id);
+      setFlash(`Installed ${item.app.title}. It's pinned to your taskbar.`);
       return;
     }
-    setConsent({ pkg, allow: new Set(pkg.permissions) });
+    if (item.pkg.permissions.length === 0) {
+      install(item.pkg, []);
+      setFlash(`Installed "${item.pkg.name}".`);
+      return;
+    }
+    setConsent({ pkg: item.pkg, allow: new Set(item.pkg.permissions) });
+  };
+
+  const removeItem = (item: StoreItem) => {
+    if (item.kind === "native") {
+      uninstallNative(item.app.id);
+      setFlash(`Removed ${item.app.title}. Any open windows were closed.`);
+      return;
+    }
+    const existing = blakById.get(packageId(item.pkg.name));
+    if (existing) uninstall(existing.id);
+    setFlash(`Removed "${item.pkg.name}".`);
+  };
+
+  const openItem = (item: StoreItem) => {
+    if (item.kind === "native") openApp(item.app.id);
+    else {
+      const existing = blakById.get(packageId(item.pkg.name));
+      if (existing) openApp("blakApp", { installId: existing.id });
+    }
   };
 
   const confirmInstall = () => {
     if (!consent) return;
     install(consent.pkg, [...consent.allow]);
-    setFlash(
-      `Installed "${consent.pkg.name}"${
-        consent.allow.size
-          ? ` with ${consent.allow.size} permission${consent.allow.size === 1 ? "" : "s"}`
-          : " with no permissions"
-      }.`
-    );
+    setFlash(`Installed "${consent.pkg.name}".`);
     setConsent(null);
   };
 
@@ -124,8 +192,8 @@ export default function AppStore(_props: AppProps) {
     const content = useFsStore.getState().nodes[path]?.content ?? "";
     try {
       const pkg = parsePackage(content);
-      setOpenName(pkg.name);
-      beginInstall(pkg);
+      setOpenKey(`blak:${pkg.name}`);
+      beginInstall({ kind: "blak", key: `blak:${pkg.name}`, pkg });
     } catch (err) {
       setError((err as Error).message);
     }
@@ -138,358 +206,334 @@ export default function AppStore(_props: AppProps) {
     openApp("codeStudio", { path: target });
   };
 
-  const pill = "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] transition";
-  const ghost = `${pill} hover:bg-white/10 text-white/65`;
+  const visible = items.filter((item) => {
+    const needle = query.trim().toLowerCase();
+    if (needle && !itemName(item).toLowerCase().includes(needle) && !itemDescription(item).toLowerCase().includes(needle)) {
+      return false;
+    }
+    if (navTab === "library" && !openKey) return isInstalled(item);
+    return true;
+  });
+
+  const selected = openKey ? items.find((item) => item.key === openKey) ?? null : null;
+  const selectedBlak = selected && selected.kind === "blak" ? blakById.get(packageId(selected.pkg.name)) : undefined;
+
+  const groupedApps = useMemo(() => {
+    const groups: Record<string, StoreItem[]> = {
+      "Media & Entertainment": [],
+      "Productivity & Tools": [],
+      "Development & Coding": [],
+      "Lifestyle & Finance": [],
+      "Other": []
+    };
+    items.forEach(item => {
+      const name = itemName(item);
+      if (["NovaTube", "NovaFix", "NovaMusic", "Media Player", "Photos"].includes(name)) groups["Media & Entertainment"].push(item);
+      else if (["To-do", "Notepad", "Notes", "Calculator", "Terminal", "Task Manager", "PDF Viewer", "Wiki Peek", "Converter"].includes(name)) groups["Productivity & Tools"].push(item);
+      else if (["Code Studio", "Hello World", "Greeter", "Counter", "Tip Split"].includes(name)) groups["Development & Coding"].push(item);
+      else if (["Habits", "Money"].includes(name)) groups["Lifestyle & Finance"].push(item);
+      else groups["Other"].push(item);
+    });
+    return groups;
+  }, [items]);
+
+  const renderAppCard = (item: StoreItem) => {
+    const installedNow = isInstalled(item);
+    return (
+      <button 
+        key={item.key} 
+        onClick={() => { setOpenKey(item.key); setShowSource(false); }}
+        className="w-[140px] shrink-0 group flex flex-col gap-2 rounded-2xl p-2 hover:bg-white/5 transition text-left"
+      >
+        <div className="w-full aspect-square rounded-2xl flex items-center justify-center overflow-hidden shadow-md shadow-black/20" style={{ background: item.kind === "native" ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.05)" }}>
+          <ItemTile item={item} size={100} />
+        </div>
+        <div className="px-1">
+          <div className="text-[12px] font-medium truncate text-white/90">{itemName(item)}</div>
+          <div className="flex items-center gap-1 mt-0.5">
+            {installedNow ? (
+              <span className="text-[10px] text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded-full inline-block">Owned</span>
+            ) : (
+              <span className="text-[10px] text-white/50 bg-white/10 px-1.5 py-0.5 rounded-full inline-block">Free</span>
+            )}
+            <StarRating value={itemRating(item)} size={8} />
+          </div>
+        </div>
+      </button>
+    );
+  };
 
   return (
-    <div className="relative h-full flex flex-col bg-[#15141d] text-white/85 overflow-hidden">
-      {/* header */}
-      <div className="shrink-0 border-b border-white/10 bg-gradient-to-b from-white/[0.06] to-transparent">
-        <div className="flex items-center gap-3 px-4 py-3">
-          {selected ? (
-            <button
-              onClick={() => {
-                setOpenName(null);
-                setShowSource(false);
-              }}
-              aria-label="Back to the store"
-              className="p-1.5 rounded-lg hover:bg-white/10 text-white/60"
-            >
-              <ChevronLeft size={16} />
-            </button>
-          ) : (
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center shrink-0">
-              <Store size={15} className="text-white" />
-            </div>
-          )}
-          <div className="min-w-0">
-            <div className="text-sm font-semibold tracking-tight">App Store</div>
-            <div className="text-[11px] text-white/40">
-              {installedApps.length} installed · {catalogue.length} in the catalogue
-            </div>
-          </div>
-
-          {!selected && (
-            <div className="ml-auto flex items-center gap-2">
-              <div className="flex items-center gap-1.5 bg-white/[0.07] border border-white/10 rounded-full px-3 py-1.5 focus-within:border-blue-500/50">
-                <Search size={12} className="text-white/40" />
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search apps"
-                  aria-label="Search apps"
-                  className="bg-transparent text-xs outline-none placeholder:text-white/30 w-32"
-                />
-              </div>
-              <button className={ghost} onClick={() => setImportOpen(true)}>
-                <Upload size={12} /> Install .blak
-              </button>
-            </div>
-          )}
+    <div className="relative h-full flex bg-[#1c1c1c] text-white/90 overflow-hidden font-sans">
+      {/* Sidebar */}
+      <div className="w-16 shrink-0 bg-black/20 border-r border-white/5 flex flex-col items-center py-6 gap-4 z-10">
+        <button onClick={() => { setNavTab("home"); setOpenKey(null); setQuery(""); }} className={`p-3 rounded-xl transition ${navTab === "home" && !openKey ? "bg-blue-500/20 text-blue-400" : "text-white/50 hover:bg-white/10 hover:text-white/80"}`} title="Home">
+          <Home size={22} />
+        </button>
+        <button onClick={() => { setNavTab("library"); setOpenKey(null); setQuery(""); }} className={`p-3 rounded-xl transition ${navTab === "library" && !openKey ? "bg-blue-500/20 text-blue-400" : "text-white/50 hover:bg-white/10 hover:text-white/80"}`} title="Library">
+          <Library size={22} />
+        </button>
+        <div className="mt-auto flex flex-col gap-3">
+          <button onClick={() => setImportOpen(true)} className="p-3 rounded-xl text-white/50 hover:bg-white/10 hover:text-white/80 transition" title="Install .blak package">
+            <Upload size={22} />
+          </button>
         </div>
-
-        {!selected && (
-          <div className="flex items-center gap-1.5 px-4 pb-3">
-            {([
-              ["all", "All apps"],
-              ["available", "Not installed"],
-              ["installed", "Installed"],
-            ] as [Filter, string][]).map(([value, label]) => (
-              <button
-                key={value}
-                onClick={() => setFilter(value)}
-                className={`${pill} ${
-                  filter === value ? "bg-white text-black font-medium" : "bg-white/[0.07] text-white/60 hover:bg-white/10"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
-      {(error || flash) && (
-        <div
-          className={`px-4 py-2 text-[11px] border-b border-white/10 shrink-0 flex items-center gap-2 ${
-            error ? "bg-red-500/15 text-red-200" : "bg-emerald-500/10 text-emerald-200"
-          }`}
-        >
-          {error ? <ShieldCheck size={12} /> : <CircleCheck size={12} />}
-          {error ?? flash}
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col min-w-0 bg-[#202020]">
+        {/* Top Header */}
+        <div className="shrink-0 h-16 flex items-center justify-between px-6 z-10">
+          <div className="flex items-center w-10">
+            {openKey && (
+              <button onClick={() => { setOpenKey(null); setShowSource(false); }} className="p-2 rounded-full hover:bg-white/10 text-white/70 transition">
+                <ArrowLeft size={20} />
+              </button>
+            )}
+          </div>
+          <div className="flex-1 max-w-lg mx-auto">
+            <div className="flex items-center gap-2 bg-black/30 border border-white/10 rounded-full px-4 py-2 w-full focus-within:border-blue-500/50 focus-within:bg-black/40 transition">
+              <Search size={16} className="text-white/40" />
+              <input
+                value={query}
+                onChange={(e) => { setQuery(e.target.value); if (openKey) setOpenKey(null); }}
+                placeholder="Search apps, games, and more"
+                className="bg-transparent text-[13px] outline-none placeholder:text-white/30 flex-1 text-white"
+              />
+            </div>
+          </div>
+          <div className="w-10"></div>
         </div>
-      )}
 
-      {/* body */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        {!selected ? (
-          <div className="p-4">
-            {/* Native apps ship with the OS, so they can't be "installed" —
-                they're listed here because this is where people look for them. */}
-            {filter !== "installed" && !query.trim() && (
-              <div className="mb-6">
-                <div className="flex items-baseline gap-2 mb-2.5">
-                  <span className="text-[11px] uppercase tracking-wide text-white/35">
-                    Included with NovaOS
-                  </span>
-                  <span className="text-[10px] text-white/25">already installed · native apps</span>
-                </div>
-                <div className="flex gap-2 overflow-x-auto pb-1">
-                  {APPS.filter((app) => app.id !== "blakApp").map((app) => (
-                    <button
-                      key={app.id}
-                      onClick={() => openApp(app.id)}
-                      className="shrink-0 w-[104px] p-2.5 rounded-xl bg-white/[0.035] border border-white/[0.06] hover:bg-white/[0.08] hover:border-white/[0.12] transition flex flex-col items-center gap-2"
-                    >
-                      <span
-                        className={`relative w-10 h-10 rounded-xl ${app.iconBg} flex items-center justify-center overflow-hidden`}
-                      >
-                        <span className="absolute inset-0 bg-gradient-to-br from-white/25 via-transparent to-black/20" />
-                        <app.icon size={18} className="text-white relative" />
-                      </span>
-                      <span className="text-[10.5px] text-white/70 text-center leading-tight">
-                        {app.title}
-                      </span>
-                    </button>
-                  ))}
+        {(error || flash) && (
+          <div className={`px-6 py-2.5 text-[12px] flex items-center gap-2 z-20 shadow-md ${error ? "bg-red-500/20 text-red-200" : "bg-emerald-500/20 text-emerald-200"}`}>
+            {error ? <ShieldCheck size={14} /> : <CircleCheck size={14} />}
+            {error ?? flash}
+          </div>
+        )}
+
+        <div className="flex-1 min-h-0 overflow-y-auto pb-10 custom-scrollbar">
+          {!selected ? (
+            query.trim() ? (
+              <div className="p-8">
+                <h2 className="text-xl font-semibold mb-6">Search results for "{query}"</h2>
+                <div className="flex flex-wrap gap-4">
+                  {visible.length === 0 ? (
+                    <div className="text-white/40 text-sm">No results found.</div>
+                  ) : (
+                    visible.map(renderAppCard)
+                  )}
                 </div>
               </div>
-            )}
-
-            <div className="flex items-baseline gap-2 mb-2.5">
-              <span className="text-[11px] uppercase tracking-wide text-white/35">BLAK apps</span>
-              <span className="text-[10px] text-white/25">written in BLAK · install and uninstall</span>
-            </div>
-
-            {visible.length === 0 ? (
-              <div className="text-center py-16">
-                <Boxes size={32} className="mx-auto text-white/15 mb-3" />
-                <div className="text-sm text-white/50">Nothing matches that.</div>
-                <div className="text-[11px] text-white/30 mt-1">
-                  Try a different search, or install a .blak package from disk.
+            ) : navTab === "library" ? (
+              <div className="p-8">
+                <h2 className="text-2xl font-semibold mb-6">Library</h2>
+                <div className="flex flex-wrap gap-4">
+                  {visible.length === 0 ? (
+                    <div className="text-white/40 text-sm">You haven't installed any apps yet.</div>
+                  ) : (
+                    visible.map(renderAppCard)
+                  )}
                 </div>
               </div>
             ) : (
-              <div
-                className="grid gap-3"
-                style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}
-              >
-                {visible.map((pkg) => {
-                  const app = installedById.get(packageId(pkg.name));
-                  const openDetails = () => {
-                    setOpenName(pkg.name);
-                    setShowSource(false);
-                  };
-                  return (
-                    <div
-                      key={pkg.name}
-                      className="group p-3.5 rounded-2xl bg-white/[0.04] border border-white/[0.07] hover:bg-white/[0.07] hover:border-white/[0.14] transition flex flex-col gap-3"
-                    >
-                      <div className="flex items-start gap-3">
-                        <AppTile pkg={pkg} size={46} />
-                        <div className="min-w-0 flex-1">
-                          <button
-                            onClick={openDetails}
-                            className="text-[13px] font-medium truncate block max-w-full text-left hover:underline"
-                          >
-                            {pkg.name}
-                          </button>
-                          <div className="text-[11px] text-white/40 truncate">
-                            {pkg.author} · v{pkg.version}
-                          </div>
-                          <div className="mt-1 flex items-center gap-1.5">
-                            {app ? (
-                              <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400">
-                                <CircleCheck size={10} /> Installed
-                              </span>
-                            ) : (
-                              <span className="text-[10px] text-white/30">{countLines(pkg.source)} lines of BLAK</span>
-                            )}
-                            {pkg.permissions.length > 0 && (
-                              <span
-                                className="inline-flex items-center gap-0.5 text-[10px] text-amber-300/80"
-                                title={`${pkg.permissions.length} permission${pkg.permissions.length === 1 ? "" : "s"}`}
-                              >
-                                <KeyRound size={9} /> {pkg.permissions.length}
-                              </span>
-                            )}
+              <div>
+                {/* Hero Banner */}
+                {items.length > 0 && (
+                  <div className="px-8 pt-2 pb-6">
+                    <div className="relative w-full h-64 rounded-3xl overflow-hidden shadow-2xl flex cursor-pointer group" onClick={() => setOpenKey(items[0].key)}>
+                      <div className="absolute inset-0 bg-gradient-to-br from-indigo-600 via-purple-700 to-blue-800 opacity-90 transition group-hover:scale-105 duration-700" />
+                      <div className="absolute inset-0 bg-black/20" />
+                      <div className="relative z-10 p-10 flex flex-col justify-end w-full">
+                        <div className="flex items-center gap-6">
+                          <ItemTile item={items[0]} size={90} />
+                          <div>
+                            <div className="text-sm font-medium text-white/70 mb-1 uppercase tracking-wider">Featured App</div>
+                            <h1 className="text-4xl font-bold text-white tracking-tight drop-shadow-md">{itemName(items[0])}</h1>
+                            <p className="text-white/80 mt-2 text-sm max-w-xl line-clamp-2">{itemDescription(items[0])}</p>
                           </div>
                         </div>
                       </div>
-                      <p className="text-[11.5px] text-white/50 leading-relaxed line-clamp-2">{pkg.description}</p>
-                      <div className="flex items-center gap-2 mt-auto">
-                        {app ? (
-                          <button
-                            onClick={() => openApp("blakApp", { installId: app.id })}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] bg-white text-black font-medium hover:bg-white/90"
-                          >
-                            <Play size={11} /> Open
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => beginInstall(pkg)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] bg-blue-500 text-white font-medium hover:bg-blue-400"
-                          >
-                            <Download size={11} /> Install
+                    </div>
+                  </div>
+                )}
+
+                {/* Categories */}
+                <div className="px-8 space-y-10">
+                  {Object.entries(groupedApps).map(([category, catItems]) => {
+                    if (catItems.length === 0) return null;
+                    return (
+                      <div key={category}>
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-lg font-semibold text-white">{category}</h3>
+                        </div>
+                        <div className="flex gap-4 overflow-x-auto pb-4 snap-x">
+                          {catItems.map(item => (
+                            <div key={item.key} className="snap-start">
+                              {renderAppCard(item)}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )
+          ) : (
+            <div>
+              {/* App Details Header Banner */}
+              <div className="relative w-full h-72 flex items-end">
+                <div className={`absolute inset-0 ${selected.kind === 'native' ? selected.app.iconBg : selected.pkg.color} opacity-30 blur-2xl`} />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#202020] via-[#202020]/80 to-transparent" />
+                
+                <div className="relative z-10 w-full px-10 pb-8 flex items-end gap-6">
+                  <ItemTile item={selected} size={120} />
+                  <div className="flex-1 mb-2">
+                    <h1 className="text-4xl font-bold tracking-tight text-white">{itemName(selected)}</h1>
+                    <div className="text-sm text-blue-400 mt-2 font-medium hover:underline cursor-pointer">
+                      {itemAuthor(selected)}
+                    </div>
+                    <div className="flex items-center gap-4 mt-2">
+                      <div className="flex items-center gap-1.5">
+                        <StarRating value={itemRating(selected) || 4.5} size={14} />
+                        <span className="text-white/50 text-xs ml-1">({itemReviews(selected) || 128} ratings)</span>
+                      </div>
+                      <span className="text-white/30 text-xs px-2 py-0.5 border border-white/10 rounded-md">
+                        {selected.kind === "native" ? "Native app" : "BLAK App"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mb-2">
+                    {isInstalled(selected) ? (
+                      <div className="flex gap-2">
+                        <button onClick={() => openItem(selected)} className="px-8 py-3 rounded-xl bg-blue-500 hover:bg-blue-400 text-white font-semibold text-sm transition shadow-lg shadow-blue-500/25 flex items-center gap-2">
+                          <Play size={16} /> Open
+                        </button>
+                        {selected.kind === "blak" && (
+                          <button onClick={() => editInStudio(selected.pkg)} className="px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white transition" title="Edit Code">
+                            <Code2 size={16} />
                           </button>
                         )}
-                        <button
-                          onClick={openDetails}
-                          className="text-[10px] text-white/30 hover:text-white/60 ml-auto"
-                        >
-                          Details →
+                        <button onClick={() => removeItem(selected)} className="px-4 py-3 rounded-xl bg-white/10 hover:bg-red-500/20 text-white hover:text-red-400 transition" title="Uninstall">
+                          <Trash2 size={16} />
                         </button>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div>
-            {/* hero */}
-            <div className="relative px-6 pt-6 pb-5 overflow-hidden">
-              <div className={`absolute -top-20 -left-10 w-72 h-72 rounded-full ${selected.color} opacity-20 blur-3xl`} />
-              <div className="relative flex items-start gap-4">
-                <AppTile pkg={selected} size={72} />
-                <div className="min-w-0 flex-1">
-                  <div className="text-xl font-semibold tracking-tight truncate">{selected.name}</div>
-                  <div className="text-[11px] text-white/45 mt-0.5">
-                    {selected.author} · v{selected.version} · {countLines(selected.source)} lines of BLAK
-                  </div>
-                  <div className="flex items-center gap-2 mt-3">
-                    {selectedInstalled ? (
-                      <>
-                        <button
-                          onClick={() => openApp("blakApp", { installId: selectedInstalled.id })}
-                          className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs bg-white text-black font-semibold hover:bg-white/90"
-                        >
-                          <Play size={12} /> Open
-                        </button>
-                        <button className={ghost} onClick={() => editInStudio(selected)}>
-                          <Code2 size={12} /> Edit
-                        </button>
-                        <button
-                          onClick={() => {
-                            uninstall(selectedInstalled.id);
-                            setFlash(`Removed "${selected.name}".`);
-                          }}
-                          className={`${pill} text-red-300 hover:bg-red-500/15`}
-                        >
-                          <Trash2 size={12} /> Uninstall
-                        </button>
-                      </>
                     ) : (
-                      <>
-                        <button
-                          onClick={() => beginInstall(selected)}
-                          className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs bg-blue-500 text-white font-semibold hover:bg-blue-400"
-                        >
-                          <Download size={12} /> Install
-                        </button>
-                        <button className={ghost} onClick={() => editInStudio(selected)}>
-                          <Code2 size={12} /> View the code
-                        </button>
-                      </>
+                      <button onClick={() => beginInstall(selected)} className="px-10 py-3 rounded-xl bg-blue-500 hover:bg-blue-400 text-white font-semibold text-sm transition shadow-lg shadow-blue-500/25 flex items-center gap-2">
+                        <Download size={16} /> Get
+                      </button>
                     )}
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div className="px-6 pb-6 space-y-4">
-              <div className="p-4 rounded-2xl bg-white/[0.04] border border-white/[0.07]">
-                <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-white/35 mb-2">
-                  <Sparkles size={11} /> What it does
-                </div>
-                <p className="text-[12.5px] text-white/65 leading-relaxed" style={{ userSelect: "text" }}>
-                  {selected.description}
-                </p>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-white/[0.04] border border-white/[0.07]">
-                <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-white/35 mb-2.5">
-                  <ShieldCheck size={11} /> Permissions
-                </div>
-                {selected.permissions.length === 0 ? (
-                  <div className="text-[12.5px] text-white/55 leading-relaxed">
-                    This app asks for nothing. It can only read and write inside its own folder.
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {selected.permissions.map((permission) => {
-                      const grantedNow = selectedInstalled?.granted.includes(permission);
-                      return (
-                        <div key={permission} className="flex items-center gap-2.5">
-                          <span className="w-7 h-7 rounded-lg bg-amber-400/15 flex items-center justify-center shrink-0">
-                            <KeyRound size={12} className="text-amber-300" />
-                          </span>
-                          <span className="text-[12.5px] text-white/70 flex-1">{permissionLabel(permission)}</span>
-                          {selectedInstalled && (
-                            <span
-                              className={`text-[10px] px-2 py-0.5 rounded-full ${
-                                grantedNow
-                                  ? "bg-emerald-500/15 text-emerald-300"
-                                  : "bg-white/[0.07] text-white/35"
-                              }`}
-                            >
-                              {grantedNow ? "allowed" : "blocked"}
-                            </span>
-                          )}
+              <div className="px-10 py-8 flex gap-12">
+                <div className="flex-1 space-y-10">
+                  {/* Screenshots Placeholder */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold">Screenshots</h3>
+                    <div className="flex gap-4 overflow-x-auto pb-4 snap-x">
+                      {[1, 2].map((i) => (
+                        <div key={i} className="w-[400px] h-[225px] shrink-0 bg-white/5 rounded-xl border border-white/10 flex items-center justify-center snap-start overflow-hidden relative">
+                           <div className="absolute inset-0 flex items-center justify-center opacity-10">
+                              <ItemTile item={selected} size={200} />
+                           </div>
+                           <div className="z-10 text-white/20 font-medium">Screenshot {i}</div>
                         </div>
-                      );
-                    })}
+                      ))}
+                    </div>
                   </div>
-                )}
-              </div>
 
-              <div className="rounded-2xl bg-white/[0.04] border border-white/[0.07] overflow-hidden">
-                <button
-                  onClick={() => setShowSource((v) => !v)}
-                  className="w-full flex items-center gap-1.5 px-4 py-3 text-[11px] uppercase tracking-wide text-white/35 hover:bg-white/[0.03]"
-                >
-                  <Code2 size={11} /> Source
-                  <span className="ml-auto normal-case tracking-normal text-white/30">
-                    {showSource ? "Hide" : "Show"}
-                  </span>
-                  {showSource ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                </button>
-                {showSource && (
-                  <pre
-                    className="px-4 pb-4 text-[11px] font-mono text-white/65 overflow-x-auto max-h-72 overflow-y-auto leading-relaxed"
-                    style={{ userSelect: "text" }}
-                  >
-                    {selected.source}
-                  </pre>
-                )}
+                  {/* Description */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold">Description</h3>
+                    <p className="text-[14px] text-white/70 leading-relaxed whitespace-pre-line max-w-3xl">
+                      {itemDescription(selected)}
+                    </p>
+                  </div>
+
+                  {selected.kind === "blak" && (
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-semibold">Permissions</h3>
+                      {selected.pkg.permissions.length === 0 ? (
+                        <div className="text-[14px] text-white/50">This app asks for no special permissions.</div>
+                      ) : (
+                        <div className="grid gap-3 max-w-xl">
+                          {selected.pkg.permissions.map((permission) => {
+                            const grantedNow = selectedBlak?.granted.includes(permission);
+                            return (
+                              <div key={permission} className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/5">
+                                <span className="w-8 h-8 rounded-lg bg-amber-400/10 flex items-center justify-center shrink-0">
+                                  <KeyRound size={14} className="text-amber-400" />
+                                </span>
+                                <span className="text-[13px] text-white/80 flex-1">{permissionLabel(permission)}</span>
+                                {selectedBlak && (
+                                  <span className={`text-[11px] px-2 py-1 rounded-md ${grantedNow ? "bg-emerald-500/20 text-emerald-300" : "bg-white/10 text-white/50"}`}>
+                                    {grantedNow ? "allowed" : "blocked"}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      <div className="mt-8 rounded-xl bg-black/20 border border-white/10 overflow-hidden max-w-3xl">
+                        <button onClick={() => setShowSource((v) => !v)} className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 transition">
+                          <div className="flex items-center gap-2 text-sm font-medium">
+                            <Code2 size={16} /> Source Code
+                          </div>
+                          <div className="flex items-center gap-1 text-white/40 text-xs">
+                            {showSource ? "Hide" : "Show"}
+                            {showSource ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                          </div>
+                        </button>
+                        {showSource && (
+                          <pre className="px-5 pb-5 text-[12px] font-mono text-white/60 overflow-x-auto max-h-96 overflow-y-auto leading-relaxed border-t border-white/5 pt-4">
+                            {selected.pkg.source}
+                          </pre>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Right Column (Discover more) */}
+                <div className="w-72 shrink-0 space-y-4">
+                  <h3 className="text-lg font-semibold">Discover more</h3>
+                  <div className="flex flex-col gap-3">
+                    {items.filter(i => i.key !== selected.key).slice(0, 4).map(item => (
+                      <button key={item.key} onClick={() => { setOpenKey(item.key); setShowSource(false); }} className="flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition text-left border border-transparent hover:border-white/10">
+                        <ItemTile item={item} size={48} />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium truncate">{itemName(item)}</div>
+                          <div className="text-[11px] text-white/50 mt-0.5">{item.kind === 'native' ? 'Native app' : 'BLAK App'}</div>
+                        </div>
+                        <span className="text-[10px] bg-white/10 px-2 py-1 rounded-md text-white/60 shrink-0">Free</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {consent && (
-        <div
-          className="absolute inset-0 z-30 bg-black/70 flex items-center justify-center p-6"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Permission request"
-        >
-          <div className="w-full max-w-sm bg-[#1b1a26] border border-white/10 rounded-2xl shadow-2xl p-5">
-            <div className="flex items-center gap-3 mb-3">
-              <AppTile pkg={consent.pkg} size={40} />
+        <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true">
+          <div className="w-full max-w-sm bg-[#1c1c1c] border border-white/10 rounded-2xl shadow-2xl p-6">
+            <div className="flex items-center gap-4 mb-4">
+              <ItemTile item={{ kind: "blak", key: "consent", pkg: consent.pkg }} size={48} />
               <div className="min-w-0">
-                <div className="text-sm font-medium truncate">{consent.pkg.name}</div>
-                <div className="text-[11px] text-white/40">wants permission to:</div>
+                <div className="text-base font-semibold truncate">{consent.pkg.name}</div>
+                <div className="text-xs text-white/50">wants permission to:</div>
               </div>
             </div>
-            <div className="space-y-2 mb-4">
+            <div className="space-y-2 mb-6 bg-black/20 p-3 rounded-xl border border-white/5">
               {consent.pkg.permissions.map((permission) => (
-                <label
-                  key={permission}
-                  className="flex items-start gap-2.5 text-[12.5px] cursor-pointer p-2 rounded-lg hover:bg-white/5"
-                >
+                <label key={permission} className="flex items-start gap-3 text-sm cursor-pointer p-2 rounded-lg hover:bg-white/5 transition">
                   <input
                     type="checkbox"
                     checked={consent.allow.has(permission)}
@@ -499,24 +543,17 @@ export default function AppStore(_props: AppProps) {
                       else allow.delete(permission);
                       setConsent({ ...consent, allow });
                     }}
-                    className="mt-0.5 accent-blue-500"
+                    className="mt-0.5 accent-blue-500 w-4 h-4 rounded"
                   />
-                  <span className="text-white/75">{permissionLabel(permission)}</span>
+                  <span className="text-white/80">{permissionLabel(permission)}</span>
                 </label>
               ))}
             </div>
-            <p className="text-[11px] text-white/40 leading-relaxed mb-4">
-              Uncheck anything you'd rather not allow. The app still installs — those actions just fail
-              with a clear message instead.
-            </p>
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setConsent(null)} className={`${pill} bg-white/[0.07] hover:bg-white/10 text-white/70`}>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setConsent(null)} className="px-5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/80 text-sm font-medium transition">
                 Cancel
               </button>
-              <button
-                onClick={confirmInstall}
-                className="px-4 py-1.5 rounded-full text-[11px] bg-blue-500 hover:bg-blue-400 text-white font-semibold"
-              >
+              <button onClick={confirmInstall} className="px-5 py-2 rounded-xl bg-blue-500 hover:bg-blue-400 text-white font-semibold text-sm transition">
                 Install
               </button>
             </div>
@@ -525,12 +562,7 @@ export default function AppStore(_props: AppProps) {
       )}
 
       {importOpen && (
-        <FileDialog
-          mode="open"
-          initialDir={PROJECTS_DIR}
-          onCancel={() => setImportOpen(false)}
-          onConfirm={importPackage}
-        />
+        <FileDialog mode="open" initialDir={PROJECTS_DIR} onCancel={() => setImportOpen(false)} onConfirm={importPackage} />
       )}
     </div>
   );

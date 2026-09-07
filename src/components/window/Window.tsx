@@ -1,4 +1,4 @@
-import { useRef, useState, memo, Suspense } from "react";
+import { useRef, useState, memo, Suspense, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Minus, Square, X, Copy } from "lucide-react";
 import type { WindowState } from "../../lib/types";
@@ -29,6 +29,13 @@ function Window({ win }: Props) {
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
   const [snapPreview, setSnapPreview] = useState<"left" | "right" | "top" | null>(null);
   const resizeRef = useRef<{ startX: number; startY: number; startW: number; startH: number; startWX: number; startWY: number; dir: string } | null>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    shellRef.current?.focus();
+  }, []);
+
+  const focusShell = () => shellRef.current?.focus();
 
   if (!app) return null;
   const AppComponent = app.component;
@@ -170,9 +177,13 @@ function Window({ win }: Props) {
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.96 }}
         transition={{ duration: 0.14 }}
-        onPointerDown={() => focusWindow(win.windowId)}
+        onPointerDown={(_e) => {
+          focusWindow(win.windowId);
+          focusShell();
+        }}
         className="absolute glass-panel rounded-xl shadow-2xl overflow-hidden flex flex-col"
         style={{ ...geometry, display: hidden ? "none" : undefined }}
+        ref={shellRef}
       >
         {/* resize handles */}
         {!win.maximized &&

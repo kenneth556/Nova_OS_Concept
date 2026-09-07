@@ -2,7 +2,8 @@ import { useEffect, useState, useRef, type KeyboardEvent } from "react";
 import {
   ChevronLeft, ChevronRight, Home, Search, Folder, FileText,
   Download, Image as ImageIcon, Music2, Video, Star, HardDrive, Network, Monitor,
-  Trash2, NotepadText, FolderPlus, FilePlus
+  Trash2, NotepadText, FolderPlus, FilePlus, FileCode, Film, FileArchive, FileSpreadsheet,
+  FileType2, Presentation
 } from "lucide-react";
 import { useFsStore, handleCache } from "../store/fsStore";
 import { useContextMenuStore } from "../store/contextMenuStore";
@@ -18,6 +19,74 @@ const quickAccess = [
   { name: "Music", icon: Music2, path: "/home/user/music" },
   { name: "Videos", icon: Video, path: "/home/user/videos" },
 ];
+
+const FILE_ICONS: Record<string, React.FC<{ size?: number; className?: string }>> = {
+  code: FileCode,
+  txt: FileText,
+  md: FileType2,
+  json: FileCode,
+  js: FileCode,
+  ts: FileCode,
+  html: FileCode,
+  css: FileCode,
+  py: FileCode,
+  zip: FileArchive,
+  rar: FileArchive,
+  sevenz: FileArchive,
+  mp3: Music2,
+  wav: Music2,
+  flac: Music2,
+  mp4: Video,
+  mkv: Film,
+  avi: Film,
+  mov: Film,
+  jpg: ImageIcon,
+  jpeg: ImageIcon,
+  png: ImageIcon,
+  gif: ImageIcon,
+  svg: ImageIcon,
+  webp: ImageIcon,
+  pdf: FileType2,
+  doc: FileSpreadsheet,
+  docx: FileSpreadsheet,
+  xls: FileSpreadsheet,
+  xlsx: FileSpreadsheet,
+  ppt: Presentation,
+  pptx: Presentation,
+};
+
+const getFileIcon = (filename: string) => {
+  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  const Icon = FILE_ICONS[ext] ?? FileText;
+  return Icon;
+};
+
+function Breadcrumbs({ path, onNavigate }: { path: string; onNavigate: (p: string) => void }) {
+  const parts = path.split("/").filter(Boolean);
+  const crumbs = parts.map((part, i) => {
+    const p = "/" + parts.slice(0, i + 1).join("/");
+    return { name: part, path: p };
+  });
+
+  return (
+    <div className="flex items-center gap-1 text-xs text-white/50 overflow-x-auto">
+      <button onClick={() => onNavigate("/")} className="p-1 rounded hover:bg-white/10 text-white/50 shrink-0">
+        <Home size={13} />
+      </button>
+      {crumbs.map((crumb, i) => (
+        <div key={crumb.path} className="flex items-center gap-1 shrink-0">
+          <span className="text-white/20">/</span>
+          <button
+            onClick={() => onNavigate(crumb.path)}
+            className={`hover:text-white/80 ${i === crumbs.length - 1 ? "text-white font-medium" : ""}`}
+          >
+            {crumb.name}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function FileExplorer() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -217,8 +286,8 @@ export default function FileExplorer() {
         <button onClick={goUp} aria-label="Up one level" className="p-1.5 rounded hover:bg-white/10 text-white/50"><ChevronLeft size={15} /></button>
         <button aria-label="Forward" disabled className="p-1.5 rounded text-white/20"><ChevronRight size={15} /></button>
         <button onClick={() => setCurrentPath("/home/user")} aria-label="Home" className="p-1.5 rounded hover:bg-white/10 text-white/50"><Home size={14} /></button>
-        <div className="flex-1 flex items-center gap-1 text-xs text-white/50 px-2 truncate">
-          <span className="text-white">{currentPath}</span>
+        <div className="flex-1 min-w-0">
+          <Breadcrumbs path={currentPath} onNavigate={setCurrentPath} />
         </div>
         <button
           onClick={newTextFile}
@@ -368,7 +437,10 @@ export default function FileExplorer() {
                   selected.has(id) ? "bg-blue-500/30 ring-1 ring-blue-500/50" : "hover:bg-white/5"
                 }`}
               >
-                <FileText size={40} className="text-white/80" />
+                {(() => {
+                  const Icon = getFileIcon(file);
+                  return <Icon size={40} className="text-white/80" />;
+                })()}
                 <span className="text-xs text-center break-all">{file}</span>
               </button>
               );

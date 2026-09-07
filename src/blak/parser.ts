@@ -150,9 +150,7 @@ export function parse(tokens: Token[]): Stmt[] {
         const index = parseExpression();
         expect("punct", "]");
         expr = { kind: "index", object: expr, index, line };
-      } else {
-        return expr;
-      }
+      } else return expr;
     }
   };
 
@@ -219,7 +217,6 @@ export function parse(tokens: Token[]): Stmt[] {
     if (token.type === "punct" && token.value === "{") return parseObjectLiteral();
 
     if (token.type === "ident") {
-      // `read "notes.txt"` / `get "https://…"` read as commands, not calls.
       if (COMMAND_EXPRESSIONS.has(token.value) && startsValue(peek(1))) {
         advance();
         return { kind: "command", name: token.value, arg: parseUnary(), line: token.line };
@@ -361,6 +358,10 @@ export function parse(tokens: Token[]): Stmt[] {
           }
           return { kind: "return", value: parseExpression(), line: token.line };
         }
+        case "close": {
+          advance();
+          return { kind: "close", line: token.line };
+        }
         case "on": {
           advance();
           const eventToken = peek();
@@ -408,7 +409,6 @@ export function parse(tokens: Token[]): Stmt[] {
       if (looksLikeDirective() || BARE_DIRECTIVES.has(token.value)) {
         advance();
         const args: Expr[] = [];
-        // `size 500, 400` — comma separated, ends at the block or the line end.
         while (!at("punct", "{") && !at("newline") && !at("eof") && !at("punct", "}")) {
           args.push(parseExpression());
           if (at("punct", ",")) advance();

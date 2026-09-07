@@ -4,6 +4,7 @@ import { useFsStore } from "../store/fsStore";
 import { useSystemStore } from "../store/systemStore";
 import { useWindowStore } from "../store/windowStore";
 import { APPS } from "../apps/registry";
+import { isAppInstalled } from "../store/installStore";
 import type { AppId } from "../lib/types";
 import { dirName } from "../lib/fileTypes";
 
@@ -14,6 +15,8 @@ export interface HostOptions {
   onOpenWindow: (name: string) => void;
   /** Called when async work finishes so the UI can rebuild. */
   onChange: () => void;
+  /** Close the current BLAK window. */
+  closeWindow: () => void;
 }
 
 const fromJson = (value: unknown): BlakValue => {
@@ -113,6 +116,9 @@ export function createBlakHost(options: HostOptions): BlakHost {
         (app) => app.title.toLowerCase() === wanted || app.id.toLowerCase() === wanted
       );
       if (!match) throw new BlakError(`There's no app called "${name}"`);
+      if (match.installable && !isAppInstalled(match.id)) {
+        throw new BlakError(`"${match.title}" isn't installed. Install it from the App Store first.`);
+      }
       useWindowStore.getState().openApp(match.id as AppId);
     },
 
@@ -170,6 +176,7 @@ export function createBlakHost(options: HostOptions): BlakHost {
     },
 
     openWindow: options.onOpenWindow,
+    closeWindow: options.closeWindow,
   };
 
   function requirePermission(permission: string, description: string) {

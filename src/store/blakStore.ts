@@ -12,6 +12,8 @@ export interface BlakPackage {
   color: string;
   permissions: string[];
   source: string;
+  rating?: number;
+  reviews?: number;
 }
 
 export interface InstalledApp extends BlakPackage {

@@ -1,12 +1,15 @@
-import { Search, Wifi, Bluetooth, Volume2, Battery, Bell, ChevronUp, WifiOff } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Search, Wifi, Bluetooth, Volume2, Volume1, VolumeX, Battery, Bell, ChevronUp, WifiOff } from "lucide-react";
 import { useSystemStore } from "../../store/systemStore";
 import { useWindowStore } from "../../store/windowStore";
+import { useInstallStore } from "../../store/installStore";
 import { useContextMenuStore } from "../../store/contextMenuStore";
-import { APPS } from "../../apps/registry";
+import { availableApps } from "../../apps/registry";
 import StartMenu from "./StartMenu";
 import NotificationCenter from "./NotificationCenter";
 import QuickSettings from "./QuickSettings";
 import SearchOverlay from "./SearchOverlay";
+import VolumeFlyout from "./VolumeFlyout";
 
 export default function Taskbar() {
   const {
@@ -18,8 +21,18 @@ export default function Taskbar() {
   } = useSystemStore();
   const { windows, openApp, focusWindow, minimizeWindow, desktops, activeDesktopId, switchDesktop, addDesktop } = useWindowStore();
   const openMenu = useContextMenuStore((s) => s.openMenu);
+  const setQuickSetting = useSystemStore((s) => s.setQuickSetting);
+  const [volumeOpen, setVolumeOpen] = useState(false);
+  const installed = useInstallStore((s) => s.installed);
 
-  const pinnedApps = APPS.filter((a) => a.pinned);
+  const effectiveVolume = quickSettings.muted ? 0 : quickSettings.volume;
+  const VolumeIcon = effectiveVolume === 0 ? VolumeX : effectiveVolume < 50 ? Volume1 : Volume2;
+
+  // Apps downloaded from the App Store appear here once installed.
+  const pinnedApps = useMemo(
+    () => availableApps(installed).filter((a) => a.pinned),
+    [installed]
+  );
 
   const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const dateStr = now.toLocaleDateString([], { month: "long", day: "numeric", year: "numeric" });
@@ -54,6 +67,7 @@ export default function Taskbar() {
       {notificationCenterOpen && <NotificationCenter />}
       {quickSettingsOpen && <QuickSettings />}
       {searchOpen && <SearchOverlay />}
+      {volumeOpen && <VolumeFlyout onClose={() => setVolumeOpen(false)} />}
 
       <div
         onContextMenu={handleContextMenu}
@@ -126,9 +140,10 @@ export default function Taskbar() {
 
         <div className="flex-1" />
 
-        {/* System tray */}
+        {/* System tray — network and battery open Quick Settings */}
         <button
           onClick={toggleQuickSettings}
+          aria-label="Network, Bluetooth and battery"
           className={`h-11 px-2.5 rounded-lg flex items-center gap-2 transition ${
             quickSettingsOpen ? "bg-white/15" : "hover:bg-white/10"
           }`}
@@ -138,9 +153,24 @@ export default function Taskbar() {
           ) : (
             <Wifi size={14} className="text-white/70" />
           )}
-          <Bluetooth size={14} className="text-white/70" />
-          <Volume2 size={14} className="text-white/70" />
+          <Bluetooth size={14} className={quickSettings.bluetooth ? "text-white/70" : "text-white/30"} />
           <Battery size={14} className="text-white/70" />
+        </button>
+
+        {/* Volume gets its own button and its own control */}
+        <button
+          onClick={() => setVolumeOpen((v) => !v)}
+          onAuxClick={(e) => {
+            // Middle click mutes, the same shortcut most desktops offer.
+            if (e.button === 1) setQuickSetting("muted", !quickSettings.muted);
+          }}
+          title={quickSettings.muted ? "Muted" : `Volume ${quickSettings.volume}%`}
+          aria-label={quickSettings.muted ? "Volume: muted" : `Volume: ${quickSettings.volume} percent`}
+          className={`h-11 w-9 rounded-lg flex items-center justify-center transition ${
+            volumeOpen ? "bg-white/15" : "hover:bg-white/10"
+          }`}
+        >
+          <VolumeIcon size={15} className={quickSettings.muted ? "text-white/40" : "text-white/70"} />
         </button>
 
         {/* Clock / Calendar */}

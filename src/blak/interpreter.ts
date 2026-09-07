@@ -44,6 +44,8 @@ const toNumber = (value: BlakValue, line: number): number => {
   throw new BlakError(`"${toText(value)}" isn't a number`, line);
 };
 
+export { toNumber };
+
 /* -------------------------------------------------------------------- scope */
 
 const childScope = (parent: Scope): Scope => ({ vars: new Map(), parent });
@@ -107,17 +109,20 @@ export function analyze(program: Stmt[]): BlakAppInfo {
 
 const UI_ELEMENTS = new Set([
   "text", "heading", "subtitle", "badge", "divider", "spacer", "link",
-  "button", "input", "image", "box", "card", "column", "row",
+  "button", "input", "select", "chart", "icon", "image", "box", "card", "column", "row",
+  "scrollbox", "progress", "toggle", "avatar",
 ]);
-const CONTAINERS = new Set(["box", "card", "column", "row"]);
+const CONTAINERS = new Set(["box", "card", "column", "row", "scrollbox"]);
 const STYLE_DIRECTIVES = new Set([
-  "size", "text_size", "rounded", "title", "resizable",
-  "color", "bold", "align", "gap", "pad", "variant",
+  "size", "width", "height", "text_size", "rounded", "title", "resizable",
+  "color", "bold", "align", "gap", "pad", "padding", "variant", "visible", "type",
+  "placeholder", "shadow", "border", "opacity", "blur", "bg", "background",
+  "min_height", "max_height", "min_width", "max_width", "overflow",
 ]);
 /** Style directives whose argument reads as a name, not a variable. */
-const STYLE_WORDS = new Set(["color", "align", "variant"]);
+const STYLE_WORDS = new Set(["color", "align", "variant", "shadow", "overflow"]);
 /** Directives whose bare-identifier argument is a name, not a variable. */
-const BAREWORD_DIRECTIVES = new Set(["theme", "input"]);
+const BAREWORD_DIRECTIVES = new Set(["theme", "input", "toggle"]);
 
 const MAX_STEPS = 400_000;
 const MAX_LOOP = 20_000;
@@ -268,6 +273,16 @@ export class BlakRuntime {
     this.onChange();
   }
 
+  toggleInput(name: string): void {
+    const found = lookup(this.globals, name);
+    const targetScope = found ? found.scope : this.globals;
+    const current = targetScope.vars.get(name);
+    const next = !truthy(current ?? false);
+    targetScope.vars.set(name, next);
+    this.inputs.set(name, next ? "true" : "false");
+    this.onChange();
+  }
+
   /** Called by the host when an async request resolves. */
   refresh(): void {
     this.onChange();
@@ -336,6 +351,123 @@ export class BlakRuntime {
       if (!isList(target)) throw new BlakError("add() needs a list as its first value", line);
       target.items.push(arg(args, 1));
       return target;
+    }));
+    g.set("remove", this.native("remove", (args, line) => {
+      const target = arg(args, 0);
+      if (!isList(target)) throw new BlakError("remove() needs a list as its first value", line);
+      const itemOrFn = arg(args, 1);
+      if (isFunction(itemOrFn) || isNative(itemOrFn)) {
+        target.items = target.items.filter((it) => !truthy(this.callValue(itemOrFn, [it], line, NO_TARGET)));
+      } else {
+        const idx = target.items.findIndex((it) => this.equals(it, itemOrFn));
+        if (idx !== -1) target.items.splice(idx, 1);
+      }
+      return target;
+    }));
+    g.set("remove_at", this.native("remove_at", (args, line) => {
+      const target = arg(args, 0);
+      if (!isList(target)) throw new BlakError("remove_at() needs a list", line);
+      const idx = Math.floor(toNumber(arg(args, 1), line));
+      if (idx >= 0 && idx < target.items.length) {
+        target.items.splice(idx, 1);
+      }
+      return target;
+    }));
+    g.set("filter", this.native("filter", (args, line) => {
+      const target = arg(args, 0);
+      if (!isList(target)) throw new BlakError("filter() needs a list", line);
+      const predicate = arg(args, 1);
+      if (isFunction(predicate) || isNative(predicate)) {
+        return list(target.items.filter((it) => truthy(this.callValue(predicate, [it], line, NO_TARGET))));
+      }
+      if (typeof predicate === "string") {
+        return list(target.items.filter((it) => {
+          if (isObject(it)) return truthy(it.fields.get(predicate) ?? false);
+          return toText(it) === predicate;
+        }));
+      }
+      return list(target.items.filter((it) => this.equals(it, predicate)));
+    }));
+    g.set("map", this.native("map", (args, line) => {
+      const target = arg(args, 0);
+      if (!isList(target)) throw new BlakError("map() needs a list", line);
+      const fn = arg(args, 1);
+      if (isFunction(fn) || isNative(fn)) {
+        return list(target.items.map((it) => this.callValue(fn, [it], line, NO_TARGET)));
+      }
+      if (typeof fn === "string") {
+        return list(target.items.map((it) => isObject(it) ? (it.fields.get(fn) ?? null) : null));
+      }
+      return target;
+    }));
+    g.set("find", this.native("find", (args, line) => {
+      const target = arg(args, 0);
+      if (!isList(target)) return null;
+      const predicate = arg(args, 1);
+      if (isFunction(predicate) || isNative(predicate)) {
+        const found = target.items.find((it) => truthy(this.callValue(predicate, [it], line, NO_TARGET)));
+        return found ?? null;
+      }
+      if (typeof predicate === "string") {
+        const found = target.items.find((it) => isObject(it) && truthy(it.fields.get(predicate) ?? false));
+        return found ?? null;
+      }
+      const found = target.items.find((it) => this.equals(it, predicate));
+      return found ?? null;
+    }));
+    g.set("sort", this.native("sort", (args) => {
+      const target = arg(args, 0);
+      if (!isList(target)) return list([]);
+      const key = arg(args, 1);
+      const copy = [...target.items];
+      if (typeof key === "string") {
+        copy.sort((a, b) => {
+          const valA = (isObject(a) ? a.fields.get(key) : a) ?? null;
+          const valB = (isObject(b) ? b.fields.get(key) : b) ?? null;
+          if (typeof valA === "number" && typeof valB === "number") return valA - valB;
+          return toText(valA).localeCompare(toText(valB));
+        });
+      } else {
+        copy.sort((a, b) => {
+          if (typeof a === "number" && typeof b === "number") return a - b;
+          return toText(a).localeCompare(toText(b));
+        });
+      }
+      return list(copy);
+    }));
+    g.set("sum", this.native("sum", (args, line) => {
+      const target = arg(args, 0);
+      if (!isList(target)) return 0;
+      const key = arg(args, 1);
+      let total = 0;
+      for (const it of target.items) {
+        if (typeof key === "string" && isObject(it)) {
+          total += toNumber(it.fields.get(key) ?? 0, line);
+        } else {
+          total += toNumber(it, line);
+        }
+      }
+      return total;
+    }));
+    g.set("min", this.native("min", (args, line) => {
+      if (args.length === 1 && isList(args[0])) {
+        const items = args[0].items.map((it) => toNumber(it, line));
+        return items.length > 0 ? Math.min(...items) : 0;
+      }
+      return Math.min(toNumber(arg(args, 0), line), toNumber(arg(args, 1), line));
+    }));
+    g.set("max", this.native("max", (args, line) => {
+      if (args.length === 1 && isList(args[0])) {
+        const items = args[0].items.map((it) => toNumber(it, line));
+        return items.length > 0 ? Math.max(...items) : 0;
+      }
+      return Math.max(toNumber(arg(args, 0), line), toNumber(arg(args, 1), line));
+    }));
+    g.set("clamp", this.native("clamp", (args, line) => {
+      const val = toNumber(arg(args, 0), line);
+      const lo = toNumber(arg(args, 1), line);
+      const hi = toNumber(arg(args, 2), line);
+      return Math.max(lo, Math.min(hi, val));
     }));
     g.set("now", this.native("now", () => new Date().toLocaleString()));
     g.set("encode", this.native("encode", (args) => encodeURIComponent(toText(arg(args, 0)))));
@@ -606,6 +738,22 @@ export class BlakRuntime {
       }
       return;
     }
+    if (stmt.name === "width") {
+      const value = numberArg(0);
+      if (value !== undefined) {
+        if (target.node) target.node.style.width = value;
+        else if (target.window) target.window.width = value;
+      }
+      return;
+    }
+    if (stmt.name === "height") {
+      const value = numberArg(0);
+      if (value !== undefined) {
+        if (target.node) target.node.style.height = value;
+        else if (target.window) target.window.height = value;
+      }
+      return;
+    }
 
     const style = target.node?.style;
     if (!style) return;
@@ -613,14 +761,47 @@ export class BlakRuntime {
     if (stmt.name === "text_size") style.textSize = numberArg(0);
     else if (stmt.name === "rounded") style.rounded = numberArg(0);
     else if (stmt.name === "gap") style.gap = numberArg(0);
-    else if (stmt.name === "pad") style.pad = numberArg(0);
-    else if (stmt.name === "bold") {
+    else if (stmt.name === "pad" || stmt.name === "padding") style.pad = numberArg(0);
+    else if (stmt.name === "min_height") style.minHeight = numberArg(0);
+    else if (stmt.name === "max_height") style.maxHeight = numberArg(0);
+    else if (stmt.name === "min_width") style.minWidth = numberArg(0);
+    else if (stmt.name === "max_width") style.maxWidth = numberArg(0);
+    else if (stmt.name === "opacity") {
+      const opVal = toNumber(this.evaluate(stmt.args[0], scope), stmt.line);
+      style.opacity = opVal > 1 ? opVal / 100 : opVal;
+    } else if (stmt.name === "blur") {
+      const bVal = stmt.args[0] ? this.evaluate(stmt.args[0], scope) : 8;
+      style.blur = typeof bVal === "number" ? bVal : toText(bVal);
+    } else if (stmt.name === "shadow") {
+      if (stmt.args[0]) {
+        const sVal = this.evaluate(stmt.args[0], scope);
+        style.shadow = typeof sVal === "boolean" ? sVal : toText(sVal);
+      } else {
+        style.shadow = true;
+      }
+    } else if (stmt.name === "border") {
+      style.border = stmt.args[0] ? toText(this.evaluate(stmt.args[0], scope)) : "1px solid rgba(255,255,255,0.1)";
+    } else if (stmt.name === "bg" || stmt.name === "background") {
+      style.bg = stmt.args[0] ? toText(this.evaluate(stmt.args[0], scope)) : undefined;
+    } else if (stmt.name === "overflow") {
+      style.overflow = this.directiveWord(stmt, scope);
+    } else if (stmt.name === "bold") {
       style.bold = stmt.args[0] ? truthy(this.evaluate(stmt.args[0], scope)) : true;
+    } else if (stmt.name === "visible") {
+      style.hidden = !truthy(this.evaluate(stmt.args[0] ?? { kind: "bool", value: true, line: stmt.line }, scope));
+    } else if (stmt.name === "type") {
+      style.inputType = this.directiveWord(stmt, scope);
+    } else if (stmt.name === "placeholder") {
+      if (target.node) target.node.value = this.directiveText(stmt, scope);
+      return;
     } else if (STYLE_WORDS.has(stmt.name)) {
       const word = this.directiveWord(stmt, scope);
       if (stmt.name === "color") style.color = word;
       else if (stmt.name === "align") style.align = word as UiStyle["align"];
       else if (stmt.name === "variant") style.variant = word as UiStyle["variant"];
+      else if (stmt.name === "shadow") style.shadow = word;
+      else if (stmt.name === "border") style.border = word;
+      else if (stmt.name === "overflow") style.overflow = word;
     }
   }
 
@@ -679,8 +860,16 @@ export class BlakRuntime {
         this.host.fetchPost(url, object(this.blockFields(stmt.body ?? [], scope)));
         return;
       }
+      case "close":
+        this.host.closeWindow();
+        return;
       case "click":
         // Handled while building a button; a stray `click` block does nothing.
+        return;
+      case "option":
+      case "data":
+      case "value":
+      case "label":
         return;
       default: {
         // Unknown name with a call-like shape is probably a component call.
@@ -726,6 +915,112 @@ export class BlakRuntime {
       const existing = this.inputs.get(binding) ?? "";
       this.inputs.set(binding, existing);
       this.globals.vars.set(binding, existing);
+    } else if (stmt.name === "select") {
+      // `select category` binds to a variable, optional second arg is default value.
+      const binding = this.directiveText(stmt, scope) || `field${node.id}`;
+      node.binding = binding;
+      node.value = stmt.args[1] ? toText(this.evaluate(stmt.args[1], scope)) : "";
+      const existing = this.inputs.get(binding) ?? node.value;
+      this.inputs.set(binding, existing);
+      this.globals.vars.set(binding, existing);
+      // Collect options from body: `option "Food"` style directives or a list expression.
+      const options: string[] = [];
+      for (const inner of (stmt.body ?? [])) {
+        if (inner.kind === "directive" && inner.name === "option") {
+          options.push(this.directiveText(inner, scope));
+        }
+      }
+      node.selectOptions = options.length > 0 ? options : ["Option 1", "Option 2"];
+    } else if (stmt.name === "chart") {
+      node.chartData = stmt.args[0] ? this.evaluate(stmt.args[0], scope) : list([]);
+      if (stmt.args[1]) node.style.chartType = this.directiveWord(stmt, scope, 1);
+      // Also support body directives: `data expr`, `value expr`, `label expr`
+      const body = stmt.body ?? [];
+      const dataDirective = body.find((s) => s.kind === "directive" && s.name === "data");
+      const valueDirective = body.find((s) => s.kind === "directive" && s.name === "value");
+      const labelDirective = body.find((s) => s.kind === "directive" && s.name === "label");
+      if (dataDirective && dataDirective.kind === "directive") node.chartData = this.evaluate(dataDirective.args[0] ?? { kind: "list", items: [], line: stmt.line }, scope);
+      if (valueDirective && valueDirective.kind === "directive" && node.chartData && (node.chartData as any).type === "list") {
+        const valueField = this.directiveText(valueDirective, scope);
+        node.chartData = list((node.chartData as any).items.map((item: any) => {
+          if (item.type === "object") {
+            const fields = new Map<string, BlakValue>(item.fields as any);
+            fields.set("value", fields.get(valueField) ?? 0);
+            return object(fields);
+          }
+          return item;
+        }));
+      }
+      if (labelDirective && labelDirective.kind === "directive" && node.chartData && (node.chartData as any).type === "list") {
+        const labelField = this.directiveText(labelDirective, scope);
+        node.chartData = list((node.chartData as any).items.map((item: any) => {
+          if (item.type === "object") {
+            const fields = new Map<string, BlakValue>(item.fields as any);
+            fields.set("label", fields.get(labelField) ?? "?");
+            return object(fields);
+          }
+          return item;
+        }));
+      }
+    } else if (stmt.name === "toggle") {
+      let binding: string | undefined;
+      let label = "";
+      if (stmt.args.length === 1) {
+        if (stmt.args[0].kind === "ident") {
+          binding = stmt.args[0].name;
+          label = binding;
+        } else {
+          label = toText(this.evaluate(stmt.args[0], scope));
+        }
+      } else if (stmt.args.length >= 2) {
+        label = toText(this.evaluate(stmt.args[0], scope));
+        if (stmt.args[1].kind === "ident") {
+          binding = stmt.args[1].name;
+        } else {
+          binding = toText(this.evaluate(stmt.args[1], scope));
+        }
+      }
+      node.label = label;
+      node.binding = binding;
+      if (binding) {
+        const found = lookup(scope, binding);
+        const val = found ? found.scope.vars.get(binding) : this.globals.vars.get(binding);
+        node.checked = truthy(val ?? false);
+      } else {
+        node.checked = false;
+      }
+    } else if (stmt.name === "progress") {
+      let val = 0;
+      let maxVal = 100;
+      let label = "";
+      if (stmt.args.length === 1) {
+        val = toNumber(this.evaluate(stmt.args[0], scope), stmt.line);
+      } else if (stmt.args.length === 2) {
+        if (stmt.args[0].kind === "string") {
+          label = stmt.args[0].value;
+          val = toNumber(this.evaluate(stmt.args[1], scope), stmt.line);
+        } else {
+          val = toNumber(this.evaluate(stmt.args[0], scope), stmt.line);
+          maxVal = toNumber(this.evaluate(stmt.args[1], scope), stmt.line);
+        }
+      } else if (stmt.args.length >= 3) {
+        label = toText(this.evaluate(stmt.args[0], scope));
+        val = toNumber(this.evaluate(stmt.args[1], scope), stmt.line);
+        maxVal = toNumber(this.evaluate(stmt.args[2], scope), stmt.line);
+      }
+      node.label = label;
+      node.progress = val;
+      node.progressMax = maxVal;
+    } else if (stmt.name === "avatar") {
+      node.label = this.directiveText(stmt, scope, 0);
+      node.avatarUrl = node.label;
+      if (stmt.args[1]) {
+        const sz = Math.round(toNumber(this.evaluate(stmt.args[1], scope), stmt.line));
+        node.style.width = sz;
+        node.style.height = sz;
+      }
+    } else if (stmt.name === "icon") {
+      node.label = this.directiveText(stmt, scope);
     } else if (stmt.name === "link") {
       // `link "Docs", "https://…"`
       node.label = this.directiveText(stmt, scope, 0);
@@ -749,7 +1044,7 @@ export class BlakRuntime {
       window: null,
     };
 
-    if (stmt.name === "button" || stmt.name === "link") {
+    if (stmt.name === "button" || stmt.name === "link" || stmt.name === "toggle") {
       const explicitClick = body.find((s) => s.kind === "directive" && s.name === "click");
       const styleOnly = body.filter((s) => s.kind === "directive" && STYLE_DIRECTIVES.has(s.name));
       for (const styleStmt of styleOnly) this.execStatement(styleStmt, scope, elementTarget);

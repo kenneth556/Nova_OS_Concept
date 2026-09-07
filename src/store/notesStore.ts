@@ -9,7 +9,7 @@ export interface Note {
 }
 
 const initialNotes: Note[] = [
-  { id: "1", title: "Project Ideas", body: "Build NovaOS — a browser OS with windows, apps, and themes.", updated: "2h ago" },
+  { id: "1", title: "Project Ideas", body: "Build NovaOS — a browser OS with windows, apps, and themes.", updated: "2 hours ago" },
   { id: "2", title: "Grocery List", body: "Milk, eggs, coffee, spinach, bread.", updated: "Yesterday" },
   { id: "3", title: "Meeting Notes", body: "Discussed Q3 roadmap and hiring plan.", updated: "3 days ago" },
 ];

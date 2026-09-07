@@ -28,6 +28,7 @@ export interface Token {
 export const KEYWORDS = [
   "app", "window", "if", "else", "for", "in", "repeat", "return", "on",
   "component", "use", "permission", "true", "false", "and", "or", "not",
+  "close",
 ] as const;
 
 /* --------------------------------------------------------------- expressions */
@@ -63,6 +64,7 @@ export type Stmt =
   | { kind: "for"; varName: string; iterable: Expr; body: Stmt[]; line: number }
   | { kind: "repeat"; count: Expr; body: Stmt[]; line: number }
   | { kind: "return"; value?: Expr; line: number }
+  | { kind: "close"; line: number }
   | { kind: "on"; event: string; body: Stmt[]; line: number }
   | { kind: "use"; name: string; line: number }
   | { kind: "permission"; name: string; line: number }
@@ -126,11 +128,18 @@ export type UiNodeType =
   | "link"
   | "button"
   | "input"
+  | "select"
+  | "chart"
+  | "icon"
   | "image"
   | "box"
   | "card"
   | "column"
-  | "row";
+  | "row"
+  | "scrollbox"
+  | "progress"
+  | "toggle"
+  | "avatar";
 
 export type UiAlign = "left" | "center" | "right";
 export type UiVariant = "primary" | "secondary" | "ghost" | "danger";
@@ -138,16 +147,40 @@ export type UiVariant = "primary" | "secondary" | "ghost" | "danger";
 export interface UiStyle {
   width?: number;
   height?: number;
+  minHeight?: number;
+  maxHeight?: number;
+  minWidth?: number;
+  maxWidth?: number;
   textSize?: number;
   rounded?: number;
   /** Semantic name (accent, muted, success…) or a raw CSS colour. */
   color?: string;
+  bg?: string;
+  background?: string;
   bold?: boolean;
   align?: UiAlign;
   /** Container spacing, in Tailwind-ish px. */
   gap?: number;
   pad?: number;
   variant?: UiVariant;
+  /** Visibility control: when true the node is hidden. */
+  hidden?: boolean;
+  /** Input type hint: text, number, password, email… */
+  inputType?: string;
+  /** Chart type: bar, line, pie */
+  chartType?: string;
+  /** Select options list */
+  selectOptions?: string[];
+  /** Shadow styling: e.g. "sm", "md", "lg", "none", or boolean */
+  shadow?: string | boolean;
+  /** Border styling or color */
+  border?: string;
+  /** Opacity 0 to 1 or 0 to 100 */
+  opacity?: number;
+  /** Backdrop blur / filter blur */
+  blur?: number | string;
+  /** Overflow behavior */
+  overflow?: string;
 }
 
 export interface UiNode {
@@ -155,14 +188,26 @@ export interface UiNode {
   /** Stable within a build pass, used as the React key and input identity. */
   id: string;
   label: string;
-  /** Secondary value: the url for `link`, the placeholder for `input`. */
+  /** Secondary value: the url for `link`, the placeholder for `input`, options for `select`. */
   value?: string;
   style: UiStyle;
   children: UiNode[];
-  /** Input binding name for `input username`. */
+  /** Input binding name for `input username` or `toggle done`. */
   binding?: string;
   /** Click handler body plus the scope it closed over. */
   onClick?: { body: Stmt[]; scope: Scope };
+  /** Select options list. */
+  selectOptions?: string[];
+  /** Chart data as a list of objects or a list of numbers. */
+  chartData?: BlakValue;
+  /** Toggle checked state */
+  checked?: boolean;
+  /** Progress value (0 to 100 or current value) */
+  progress?: number;
+  /** Progress max value (default 100) */
+  progressMax?: number;
+  /** Avatar URL / image source or fallback text */
+  avatarUrl?: string;
 }
 
 export interface WindowSpec {
@@ -220,4 +265,6 @@ export interface BlakHost {
   fetchPost: (url: string, body: BlakValue) => void;
   /** Called when the app declares another window and something wants it open. */
   openWindow: (name: string) => void;
+  /** Close the current window. */
+  closeWindow: () => void;
 }

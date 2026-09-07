@@ -357,7 +357,8 @@ export default function NovaMusic({ windowId, appData }: AppProps) {
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
   const [buffered, setBuffered] = useState(0);
-  const [muted, setMuted] = useState(false);
+  // Mute is a system setting, so the taskbar speaker and this button are one control.
+  const muted = useSystemStore((s) => s.quickSettings.muted);
   const [localSrc, setLocalSrc] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
@@ -837,7 +838,7 @@ export default function NovaMusic({ windowId, appData }: AppProps) {
       seekBy(-SEEK_STEP);
     } else if (event.key.toLowerCase() === "m") {
       event.preventDefault();
-      setMuted((value) => !value);
+      setQuickSetting("muted", !muted);
     } else if (event.key === "Escape" && queueOpen) {
       event.preventDefault();
       setQueueOpen(false);
@@ -1896,7 +1897,7 @@ export default function NovaMusic({ windowId, appData }: AppProps) {
           <ListMusic size={16} />
         </button>
         <button
-          onClick={() => setMuted((value) => !value)}
+          onClick={() => setQuickSetting("muted", !muted)}
           aria-label={muted || systemVolume === 0 ? "Unmute" : "Mute"}
           className={iconButton}
         >
@@ -1911,7 +1912,7 @@ export default function NovaMusic({ windowId, appData }: AppProps) {
             onChange={(event) => {
               // This is the OS volume: Quick Settings and NovaMusic share it.
               setQuickSetting("volume", Number(event.target.value));
-              setMuted(false);
+              setQuickSetting("muted", false);
             }}
             aria-label="Volume"
             className="w-20 accent-green-500 cursor-pointer"

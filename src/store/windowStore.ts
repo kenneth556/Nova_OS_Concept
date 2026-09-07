@@ -4,6 +4,7 @@ import type { AppId, WindowState } from "../lib/types";
 import { APPS } from "../apps/registry";
 import { TASKBAR_HEIGHT } from "../lib/constants";
 import { throttledLocalStorage } from "../lib/persistStorage";
+import { isAppInstalled } from "./installStore";
 
 interface WindowStore {
   windows: WindowState[];
@@ -128,6 +129,8 @@ export const useWindowStore = create<WindowStore>()(
 
         const app = APPS.find((a) => a.id === appId);
         if (!app) return;
+        // An uninstalled app must not be launchable from a stale reference.
+        if (app.installable && !isAppInstalled(app.id)) return;
 
         const offset = (windows.length % 6) * 28;
         const newWindow: WindowState = {

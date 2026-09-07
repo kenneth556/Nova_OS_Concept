@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Wifi, Bluetooth, Moon, Plane, BatteryCharging, Focus, Sun, Volume1, Volume2 } from "lucide-react";
+import { Wifi, Bluetooth, Moon, Plane, BatteryCharging, Focus, Sun, Volume1, VolumeX } from "lucide-react";
 import { useSystemStore } from "../../store/systemStore";
 
 function Tile({
@@ -86,20 +86,40 @@ export default function QuickSettings() {
               max={100}
               value={quickSettings.brightness}
               onChange={(e) => setQuickSetting("brightness", Number(e.target.value))}
+              aria-label="Brightness"
               className="w-full accent-blue-500"
             />
+            <span className="text-[10px] text-white/40 w-8 text-right tabular-nums shrink-0">
+              {quickSettings.brightness}%
+            </span>
           </div>
           <div className="flex items-center gap-3">
-            <Volume1 size={15} className="text-white/50 shrink-0" />
+            <button
+              onClick={() => setQuickSetting("muted", !quickSettings.muted)}
+              aria-label={quickSettings.muted ? "Unmute" : "Mute"}
+              aria-pressed={quickSettings.muted}
+              className={`p-1 rounded-md shrink-0 transition ${
+                quickSettings.muted ? "bg-red-500/20 text-red-300" : "text-white/50 hover:bg-white/10"
+              }`}
+            >
+              {quickSettings.muted ? <VolumeX size={15} /> : <Volume1 size={15} />}
+            </button>
             <input
               type="range"
               min={0}
               max={100}
-              value={quickSettings.volume}
-              onChange={(e) => setQuickSetting("volume", Number(e.target.value))}
+              value={quickSettings.muted ? 0 : quickSettings.volume}
+              onChange={(e) => {
+                const value = Number(e.target.value);
+                setQuickSetting("volume", value);
+                if (value > 0 && quickSettings.muted) setQuickSetting("muted", false);
+              }}
+              aria-label="Volume"
               className="w-full accent-blue-500"
             />
-            <Volume2 size={15} className="text-white/50 shrink-0" />
+            <span className="text-[10px] text-white/40 w-8 text-right tabular-nums shrink-0">
+              {quickSettings.muted ? "—" : `${quickSettings.volume}%`}
+            </span>
           </div>
         </div>
 

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Search, FileText, Folder } from "lucide-react";
-import { APPS } from "../../apps/registry";
+import { availableApps } from "../../apps/registry";
 import { useWindowStore } from "../../store/windowStore";
 import { useSystemStore } from "../../store/systemStore";
 import { useFsStore } from "../../store/fsStore";
 import { useBlakStore } from "../../store/blakStore";
+import { useInstallStore } from "../../store/installStore";
 import { appForFile } from "../../lib/fileTypes";
 import type { AppId } from "../../lib/types";
 
@@ -29,6 +30,7 @@ export default function SearchOverlay() {
   const nodes = useFsStore((s) => s.nodes);
   const setCurrentPath = useFsStore((s) => s.setCurrentPath);
   const installedApps = useBlakStore((s) => s.apps);
+  const installedNative = useInstallStore((s) => s.installed);
   const listRef = useRef<HTMLDivElement>(null);
 
   const launch = useCallback(
@@ -45,7 +47,7 @@ export default function SearchOverlay() {
   const results = useMemo<Result[]>(() => {
     const found: Result[] = [];
 
-    for (const app of APPS) {
+    for (const app of availableApps(installedNative)) {
       if (needle && !app.title.toLowerCase().includes(needle)) continue;
       found.push({
         key: `app-${app.id}`,
@@ -105,7 +107,7 @@ export default function SearchOverlay() {
     }
 
     return found.slice(0, 40);
-  }, [needle, nodes, installedApps, launch, setCurrentPath]);
+  }, [needle, nodes, installedApps, installedNative, launch, setCurrentPath]);
 
   useEffect(() => setSelected(0), [needle]);
 

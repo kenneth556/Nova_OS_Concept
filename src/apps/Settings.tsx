@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { useSystemStore } from "../store/systemStore";
 import { ACCENTS, resolveAccent } from "../lib/theme";
+import AboutPanel from "./settings/AboutPanel";
 
 const categories = [
   { id: "general", label: "General", icon: SettingsIcon },
@@ -104,16 +105,28 @@ export default function Settings() {
                 />
               </label>
               <label className="block">
-                <span className="text-xs text-white/60">Volume — {quickSettings.volume}%</span>
+                <span className="text-xs text-white/60">
+                  Volume — {quickSettings.muted ? "muted" : `${quickSettings.volume}%`}
+                </span>
                 <input
                   type="range"
                   min={0}
                   max={100}
-                  value={quickSettings.volume}
-                  onChange={(e) => setQuickSetting("volume", Number(e.target.value))}
+                  value={quickSettings.muted ? 0 : quickSettings.volume}
+                  onChange={(e) => {
+                    const value = Number(e.target.value);
+                    setQuickSetting("volume", value);
+                    if (value > 0 && quickSettings.muted) setQuickSetting("muted", false);
+                  }}
                   className="w-full mt-1 accent-blue-500"
                 />
               </label>
+              <Row label="Mute all audio" desc="Silences every app until you turn it back on">
+                <Toggle
+                  checked={quickSettings.muted}
+                  onChange={(v) => setQuickSetting("muted", v)}
+                />
+              </Row>
             </div>
 
             <h3 className="text-sm font-medium mt-6 mb-2 text-white/70">Background</h3>
@@ -171,18 +184,7 @@ export default function Settings() {
           </div>
         )}
 
-        {active === "about" && (
-          <div>
-            <h2 className="text-xl font-semibold mb-1">About</h2>
-            <p className="text-white/40 text-xs mb-5">Device specifications and system version.</p>
-            <div className="bg-white/5 rounded-xl p-5 space-y-2 text-xs">
-              <div className="flex justify-between"><span className="text-white/40">System</span><span>NovaOS Phase 1</span></div>
-              <div className="flex justify-between"><span className="text-white/40">Version</span><span>0.1.0</span></div>
-              <div className="flex justify-between"><span className="text-white/40">Build</span><span>alpha</span></div>
-              <div className="flex justify-between"><span className="text-white/40">Device</span><span>Web Browser</span></div>
-            </div>
-          </div>
-        )}
+        {active === "about" && <AboutPanel />}
 
         {!["appearance", "general", "about"].includes(active) && (
           <div className="flex flex-col items-center justify-center h-full text-white/30 gap-2">

@@ -27,6 +27,7 @@ export default function MediaPlayer({ appData }: AppProps) {
   const nodes = useFsStore((s) => s.nodes);
   // The system volume slider in Quick Settings drives real playback volume.
   const systemVolume = useSystemStore((s) => s.quickSettings.volume);
+  const systemMuted = useSystemStore((s) => s.quickSettings.muted);
   const setQuickSetting = useSystemStore((s) => s.setQuickSetting);
 
   const [path, setPath] = useState<string | null>(appData?.path ?? null);
@@ -94,8 +95,9 @@ export default function MediaPlayer({ appData }: AppProps) {
     const el = mediaRef.current;
     if (!el) return;
     el.volume = Math.min(1, Math.max(0, systemVolume / 100));
-    el.muted = muted;
-  }, [systemVolume, muted, src]);
+    // System mute wins over the app's own mute button.
+    el.muted = muted || systemMuted;
+  }, [systemVolume, systemMuted, muted, src]);
 
   useEffect(() => {
     const el = mediaRef.current;
@@ -285,7 +287,7 @@ export default function MediaPlayer({ appData }: AppProps) {
                 aria-label={muted ? "Unmute" : "Mute"}
                 className="p-1 rounded hover:bg-white/10"
               >
-                {muted || systemVolume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                {muted || systemMuted || systemVolume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}
               </button>
               <input
                 type="range"

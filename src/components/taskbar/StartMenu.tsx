@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Search, Power, RotateCw, Moon, FileText, Boxes } from "lucide-react";
-import { APPS } from "../../apps/registry";
+import { availableApps } from "../../apps/registry";
 import { useWindowStore } from "../../store/windowStore";
 import { useSystemStore } from "../../store/systemStore";
 import { useFsStore } from "../../store/fsStore";
+import { useInstallStore } from "../../store/installStore";
 import { useBlakStore } from "../../store/blakStore";
 import { appForFile, joinPath } from "../../lib/fileTypes";
 import type { AppId } from "../../lib/types";
@@ -17,6 +18,7 @@ export default function StartMenu() {
   const setStage = useSystemStore((s) => s.setStage);
   const nodes = useFsStore((s) => s.nodes);
   const installedApps = useBlakStore((s) => s.apps);
+  const installedNative = useInstallStore((s) => s.installed);
   const [query, setQuery] = useState("");
   const [showAll, setShowAll] = useState(false);
 
@@ -39,7 +41,9 @@ export default function StartMenu() {
   }, [nodes]);
 
   const needle = query.trim().toLowerCase();
-  const visibleApps = APPS.filter((app) => {
+  // Only bundled apps plus the ones installed from the App Store.
+  const usableApps = availableApps(installedNative);
+  const visibleApps = usableApps.filter((app) => {
     if (needle) return app.title.toLowerCase().includes(needle);
     return showAll || app.pinned;
   });
@@ -72,7 +76,7 @@ export default function StartMenu() {
           <span className="text-xs text-white/50">{needle ? "Results" : showAll ? "All apps" : "Pinned"}</span>
           {!needle && (
             <button onClick={() => setShowAll((v) => !v)} className="text-[11px] text-white/40 hover:text-white/70">
-              {showAll ? "Show less" : `All apps (${APPS.length})`} &gt;
+              {showAll ? "Show less" : `All apps (${usableApps.length})`} &gt;
             </button>
           )}
         </div>

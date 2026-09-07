@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft, ArrowRight, RotateCw, Plus, X, Star, Lock, Globe, MoreVertical, House,
-  ExternalLink, History as HistoryIcon, Trash2, TriangleAlert,
+  ExternalLink, History as HistoryIcon, Trash2, TriangleAlert, Search, Download,
 } from "lucide-react";
 import type { AppProps } from "../lib/types";
 import { useBrowserStore } from "../store/browserStore";
 import { useWindowStore } from "../store/windowStore";
 import {
-  NEW_TAB_URL, hostOf, isInternalUrl, isKnownUnframeable, isSameOriginAsApp, parseInternalUrl,
+  NEW_TAB_URL, isInternalUrl, isKnownUnframeable, isSameOriginAsApp, parseInternalUrl,
   resolveInput, titleForUrl,
 } from "../lib/url";
 import { BlockedPage, BookmarksPage, Favicon, HistoryPage, NewTabPage, SearchPage } from "./browser/pages";
@@ -76,7 +76,7 @@ function WebFrame({ url, reloadKey }: { url: string; reloadKey: number }) {
         key={`${url}::${reloadKey}`}
         ref={frameRef}
         src={url}
-        title={hostOf(url)}
+        title="web-frame"
         onLoad={handleLoad}
         referrerPolicy="no-referrer"
         sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
@@ -105,7 +105,11 @@ export default function Browser({ windowId, appData }: AppProps) {
   const setWindowTitle = useWindowStore((s) => s.setWindowTitle);
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [downloads, setDownloads] = useState<Array<{ name: string; url: string; time: Date }>>([]);
   const addressRef = useRef<HTMLInputElement>(null);
+  const findRef = useRef<HTMLInputElement>(null);
   const startedRef = useRef(false);
 
   useEffect(() => {
@@ -167,6 +171,16 @@ export default function Browser({ windowId, appData }: AppProps) {
     } else if (e.altKey && e.key === "ArrowRight") {
       e.preventDefault();
       goForward(windowId, tab.id);
+    } else if ((e.ctrlKey || e.metaKey) && key === "f") {
+      e.preventDefault();
+      setFindOpen((v) => !v);
+      if (!findOpen) {
+        setTimeout(() => findRef.current?.select(), 0);
+      }
+    } else if (e.key === "Escape" && findOpen) {
+      e.preventDefault();
+      setFindOpen(false);
+      setFindQuery("");
     }
   };
 
@@ -185,6 +199,10 @@ export default function Browser({ windowId, appData }: AppProps) {
   };
 
   const iconButton = "p-1.5 rounded-md hover:bg-white/10 disabled:opacity-25 disabled:hover:bg-transparent text-white/60";
+
+  const openDownload = (item: { name: string; url: string }) => {
+    window.open(item.url, "_blank", "noopener,noreferrer");
+  };
 
   return (
     <div
@@ -322,10 +340,18 @@ export default function Browser({ windowId, appData }: AppProps) {
                     onClick: () => go("nova://bookmarks"),
                   },
                   {
+                    label: "Downloads",
+                    icon: Download,
+                    onClick: () => {},
+                  },
+                  {
                     label: "Open in a real tab",
                     icon: ExternalLink,
                     onClick: () => {
-                      if (!isInternalUrl(url)) window.open(url, "_blank", "noopener,noreferrer");
+                      if (!isInternalUrl(url)) {
+                        setDownloads(prev => [{ name: titleForUrl(url), url, time: new Date() }, ...prev].slice(0, 20));
+                        window.open(url, "_blank", "noopener,noreferrer");
+                      }
                     },
                   },
                   {
@@ -345,6 +371,23 @@ export default function Browser({ windowId, appData }: AppProps) {
                     <item.icon size={13} className="text-white/50" /> {item.label}
                   </button>
                 ))}
+                {downloads.length > 0 && (
+                  <>
+                    <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-white/30 border-t border-white/10 mt-1">
+                      Recent downloads
+                    </div>
+                    {downloads.slice(0, 5).map((d, i) => (
+                      <button
+                        key={i}
+                        onClick={() => openDownload(d)}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/10 text-left"
+                      >
+                        <Download size={11} className="text-white/40" />
+                        <span className="truncate text-white/70">{d.name}</span>
+                      </button>
+                    ))}
+                  </>
+                )}
               </div>
             </>
           )}
@@ -364,6 +407,38 @@ export default function Browser({ windowId, appData }: AppProps) {
               <span className="truncate max-w-[120px]">{b.title}</span>
             </button>
           ))}
+        </div>
+      )}
+
+      {/* find in page bar */}
+      {findOpen && (
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-white/10 bg-white/5 shrink-0">
+          <Search size={13} className="text-white/40" />
+          <input
+            ref={findRef}
+            value={findQuery}
+            onChange={(e) => setFindQuery(e.target.value)}
+            placeholder="Find in page"
+            className="bg-white/5 border border-white/10 rounded px-2 py-1 text-xs outline-none focus:border-blue-500/50 w-48"
+          />
+          <button
+            onClick={() => {
+              const iframe = document.querySelector('iframe[title="web-frame"]') as HTMLIFrameElement | null;
+              iframe?.focus();
+            }}
+            className="px-2 py-1 rounded text-[11px] bg-blue-500 hover:bg-blue-400 text-white"
+          >
+            Find
+          </button>
+          <button
+            onClick={() => {
+              setFindOpen(false);
+              setFindQuery("");
+            }}
+            className="p-1 rounded hover:bg-white/10 text-white/50"
+          >
+            <X size={12} />
+          </button>
         </div>
       )}
 

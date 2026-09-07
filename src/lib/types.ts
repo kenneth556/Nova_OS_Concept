@@ -32,6 +32,18 @@ export interface AppProps {
   appData?: any;
 }
 
+/** Storefront copy for apps that are installed rather than bundled. */
+export interface AppStoreInfo {
+  tagline: string;
+  description: string;
+  version: string;
+  author: string;
+  /** Short bullet points shown on the app's store page. */
+  highlights: string[];
+  rating?: number;
+  reviews?: number;
+}
+
 export interface AppDefinition {
   id: AppId;
   title: string;
@@ -42,6 +54,13 @@ export interface AppDefinition {
   defaultSize: { width: number; height: number };
   minSize?: { width: number; height: number };
   pinned?: boolean;
+  /**
+   * True for apps that don't ship with the OS. They stay out of the taskbar,
+   * Start menu and search until installed from the App Store.
+   */
+  installable?: boolean;
+  /** Required when `installable` is set. */
+  store?: AppStoreInfo;
 }
 
 export interface WindowState {

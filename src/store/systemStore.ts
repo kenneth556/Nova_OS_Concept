@@ -13,6 +13,8 @@ interface QuickSettingsState {
   doNotDisturb: boolean;
   brightness: number;
   volume: number;
+  /** System mute. Every audio surface honours this, independent of the level. */
+  muted: boolean;
   wallpaper: string;
   accentColor: string;
 }
@@ -101,6 +103,7 @@ export const useSystemStore = create<SystemStore>()(
     doNotDisturb: false,
     brightness: 80,
     volume: 65,
+    muted: false,
     wallpaper: "/wallpapers/neon_glass.png",
     accentColor: "#3b82f6",
   },
@@ -151,6 +154,19 @@ export const useSystemStore = create<SystemStore>()(
           ...rest
         } = state as any;
         return rest;
+      },
+      /**
+       * `quickSettings` is nested, so the default shallow merge would replace it
+       * wholesale and drop any key added since the save — `muted` was the first
+       * casualty. Merge it field by field instead.
+       */
+      merge: (persisted, current) => {
+        const saved = (persisted ?? {}) as any;
+        return {
+          ...current,
+          ...saved,
+          quickSettings: { ...current.quickSettings, ...(saved.quickSettings ?? {}) },
+        };
       },
     }
   )

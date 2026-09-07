@@ -28,6 +28,7 @@ export default function BlakApp({ windowId, appData }: AppProps) {
   const installed = useBlakStore((s) => s.apps.find((a) => a.id === installId));
   const fileContent = useFsStore((s) => (filePath ? s.nodes[filePath]?.content : undefined));
   const setWindowTitle = useWindowStore((s) => s.setWindowTitle);
+  const closeWindow = useWindowStore((s) => s.closeWindow);
   const openApp = useWindowStore((s) => s.openApp);
 
   const source = installed?.source ?? inlineSource ?? fileContent ?? "";
@@ -57,6 +58,7 @@ export default function BlakApp({ windowId, appData }: AppProps) {
         onOpenWindow: (name) =>
           openApp("blakApp", { ...(appData ?? {}), windowName: name, appName: declaredName }),
         onChange: () => setVersion((v) => v + 1),
+        closeWindow: () => closeWindow(windowId),
       });
       runtime = new BlakRuntime(ast, host, () => setVersion((v) => v + 1));
       runtime.start();

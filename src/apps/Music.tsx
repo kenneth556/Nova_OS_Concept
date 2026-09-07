@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Play, Pause, Home, Search, Library, ListMusic, Shuffle, SkipBack, SkipForward, Volume2 } from "lucide-react";
+import { Play, Pause, Home, Search, Library, ListMusic, Shuffle, SkipBack, SkipForward, Volume2, Repeat, Repeat1 } from "lucide-react";
 import { handleCache } from "../store/fsStore";
 import { useSystemStore } from "../store/systemStore";
 
@@ -12,6 +12,7 @@ const tracks = [
 
 export default function Music({ appData }: { appData?: any }) {
   const systemVolume = useSystemStore((s) => s.quickSettings.volume);
+  const systemMuted = useSystemStore((s) => s.quickSettings.muted);
   const setQuickSetting = useSystemStore((s) => s.setQuickSetting);
   const [playing, setPlaying] = useState(false);
   const [activeTrackId, setActiveTrackId] = useState(1);
@@ -20,14 +21,16 @@ export default function Music({ appData }: { appData?: any }) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [shuffle, setShuffle] = useState(false);
+  const [repeat, setRepeat] = useState<"none" | "one" | "all">("none");
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // The system volume slider is the real volume control.
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.volume = Math.min(1, Math.max(0, systemVolume / 100));
+      audioRef.current.muted = systemMuted;
     }
-  }, [systemVolume, localTrack, activeTrackId]);
+  }, [systemVolume, systemMuted, localTrack, activeTrackId]);
 
   useEffect(() => {
     if (appData?.path) {
@@ -75,6 +78,10 @@ export default function Music({ appData }: { appData?: any }) {
 
   const goToOffset = (offset: number) => {
     if (playlist.length === 0) return;
+    if (offset > 0 && repeat === "none" && activeIndex === playlist.length - 1) {
+      setPlaying(false);
+      return;
+    }
     const next = shuffle && playlist.length > 1
       ? (activeIndex + 1 + Math.floor(Math.random() * (playlist.length - 1))) % playlist.length
       : (activeIndex + offset + playlist.length) % playlist.length;
@@ -100,7 +107,16 @@ export default function Music({ appData }: { appData?: any }) {
     }
   };
 
-  const handleEnded = () => goToOffset(1);
+  const handleEnded = () => {
+    if (repeat === "one") {
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0;
+        audioRef.current.play();
+      }
+    } else {
+      goToOffset(1);
+    }
+  };
 
   const togglePlay = () => setPlaying(!playing);
 
@@ -199,6 +215,14 @@ export default function Music({ appData }: { appData?: any }) {
           </button>
           <button onClick={() => goToOffset(1)} aria-label="Next track" className="hover:text-white">
             <SkipForward size={14} />
+          </button>
+          <button
+            onClick={() => setRepeat((r) => (r === "none" ? "all" : r === "all" ? "one" : "none"))}
+            aria-label={`Repeat: ${repeat}`}
+            aria-pressed={repeat !== "none"}
+            className={`hover:text-white ${repeat !== "none" ? "text-pink-400" : ""}`}
+          >
+            {repeat === "one" ? <Repeat1 size={14} /> : <Repeat size={14} />}
           </button>
         </div>
         <div className="flex-1 flex items-center gap-2 text-[10px] text-white/40">
